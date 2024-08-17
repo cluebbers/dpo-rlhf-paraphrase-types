@@ -1,132 +1,75 @@
-# flake8: noqa
-# Copyright 2023 The HuggingFace Inc. team. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
 """
-# regular:
-python src/run_dpo.py `
-    --dataset_name=data/apty_dataset.parquet `
-    --model_name_or_path=llama-7b `
-    --per_device_train_batch_size 4 `
-    --learning_rate 1e-3 `
-    --gradient_accumulation_steps 1 `
-    --logging_steps 10 `
-    --eval_steps 10 `
-    --output_dir="dpo_llama_etpy_output" `
-    --warmup_steps 10 `
-    --report_to wandb `
-    --bf16 `
-    --logging_first_step `
-    --no_remove_unused_columns
-
-# peft:
 python src/run_dpo.py \
-    --dataset_name=/home/slim/Documents/06_DataScience/06_Projects/M.Inf.2901_Master/emnlp23-paraphrase-types-dpo/data/apty_dataset.parquet \
-    --model_name_or_path=meta-llama/Llama-2-7b-hf \
-    --per_device_train_batch_size 1 \
-    --learning_rate 1e-3 \
-    --gradient_accumulation_steps 1 \
-    --gradient_checkpointing \
-    --logging_steps 10 \
-    --eval_steps 10 \
-    --output_dir="dpo_llama_apty_output" \
-    --optim rmsprop \
-    --warmup_steps 10 \
-    --report_to wandb \
-    --bf16 \
-    --logging_first_step \
-    --remove_unused_columns \
-    --use_peft \
-    --lora_r=16 \
-    --lora_alpha=16
-
-
+ --dataset_name=/home/slim/Documents/06_DataScience/06_Projects/M.Inf.2901_Master/emnlp23-paraphrase-types-dpo/data/apty_dataset.parquet \
+ --model_name_or_path=meta-llama/Llama-2-7b-hf \
+ --per_device_train_batch_size 1 \
+ --learning_rate 1e-3 \
+ --gradient_accumulation_steps 1 \
+ --logging_steps 10 \
+ --eval_steps 10 \
+ --output_dir="dpo_llama_apty_output" \
+ --optim rmsprop \
+ --warmup_steps 10 \
+ --bf16 \
+ --logging_first_step \
+ --remove_unused_columns \
+ --use_peft \
+ --lora_r=16 \
+ --lora_alpha=16
 """
 
-import logging
-import multiprocessing
-import os
 import argparse
+import logging
+import os
 from contextlib import nullcontext
 
-from trl.commands.cli_utils import init_zero_verbose, TrlParser
-from distutils.util import strtobool
-
-TRL_USE_RICH = strtobool(os.getenv("TRL_USE_RICH", "0"))
-
-if TRL_USE_RICH:
-    init_zero_verbose()
-    FORMAT = "%(message)s"
-
-    from rich.console import Console
-    from rich.logging import RichHandler
-
-
-
 import torch
-from datasets import load_dataset
-from datasets import DatasetDict
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from transformers import BitsAndBytesConfig
-from transformers import TrainingArguments
-
+from datasets import load_dataset, DatasetDict
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
 from peft import PeftModel, PeftConfig
+from trl import DPOTrainer, RichProgressCallback
+from unsloth import FastLanguageModel, PatchDPOTrainer, is_bfloat16_supported
 
-from trl import (
-    DPOTrainer,
-    ModelConfig,
-    RichProgressCallback,
-    get_kbit_device_map,
-    get_peft_config,
-    get_quantization_config,
-)
-
-from unsloth import FastLanguageModel, PatchDPOTrainer
-from unsloth import is_bfloat16_supported
+# Patch the DPOTrainer with Unsloth optimizations
 PatchDPOTrainer()
 
+# Initialize Hugging Face Hub login (if needed)
 from huggingface_hub import login
 login(new_session=False)
 
+# Clear GPU cache before starting
 torch.cuda.empty_cache()
 
+# Enable rich logging if TRL_USE_RICH is set
+from distutils.util import strtobool
+TRL_USE_RICH = strtobool(os.getenv("TRL_USE_RICH", "0"))
 if TRL_USE_RICH:
-    logging.basicConfig(format=FORMAT, datefmt="[%X]", handlers=[RichHandler()], level=logging.INFO)
+    from rich.console import Console
+    from rich.logging import RichHandler
+    logging.basicConfig(format="%(message)s", datefmt="[%X]", handlers=[RichHandler()], level=logging.INFO)
+    console = Console()
 
-
-if __name__ == "__main__":
-        # Argument parsing
-        
+def parse_arguments():
+    """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Run DPO training")
     parser.add_argument("--dataset_name", type=str, required=True, help="Path to the dataset file")
     parser.add_argument("--model_name_or_path", type=str, required=True, help="Path to the model")
     parser.add_argument("--per_device_train_batch_size", type=int, default=1, help="Batch size per device")
     parser.add_argument("--learning_rate", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Gradient accumulation steps")
-    parser.add_argument("--gradient_checkpointing", action="store_true", help="Enable gradient checkpointing")
+    parser.add_argument("--warmup_steps", type=int, default=10, help="Warmup steps")
     parser.add_argument("--logging_steps", type=int, default=10, help="Logging steps")
     parser.add_argument("--eval_steps", type=int, default=10, help="Evaluation steps")
     parser.add_argument("--output_dir", type=str, required=True, help="Output directory")
-    parser.add_argument("--optim", type=str, default="rmsprop", help="Optimizer")
-    parser.add_argument("--warmup_steps", type=int, default=10, help="Warmup steps")
-    parser.add_argument("--report_to", type=str, default="wandb", help="Reporting tool")
+    parser.add_argument("--optim", type=str, default="adamw_8bit", help="Optimizer")
+    parser.add_argument("--num_train_epochs", type=int, default=3, help="Number of training epochs")
+    parser.add_argument("--warmup_ratio", type=float, default=0.1, help="Warmup ratio for learning rate scheduling")
     parser.add_argument("--bf16", action="store_true", help="Use BF16")
     parser.add_argument("--logging_first_step", action="store_true", help="Log first step")
     parser.add_argument("--remove_unused_columns", action="store_true", help="Do not remove unused columns")
     parser.add_argument("--use_peft", action="store_true", help="Use PEFT")
     parser.add_argument("--lora_r", type=int, default=16, help="LoRA rank")
     parser.add_argument("--lora_alpha", type=int, default=16, help="LoRA alpha")
-    # long list because DPOConfig etc not working in trl<0.9
     parser.add_argument("--torch_dtype", type=str, default="auto", help="Torch dtype, e.g., 'auto', 'float16', 'bfloat16'")
     parser.add_argument("--load_in_4bit", action="store_true", help="Load model with 4-bit quantization") 
     parser.add_argument("--load_in_8bit", action="store_false", help="Load model with 8-bit quantization") 
@@ -138,139 +81,91 @@ if __name__ == "__main__":
     parser.add_argument("--batch_eval_metrics", action="store_true", help="Enable batch evaluation of metrics")
     parser.add_argument("--full_determinism", action="store_true", help="Enable full determinism for training")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
+    parser.add_argument("--beta", type=float, default=0.1, help="Beta parameter for DPOTrainer")
+    parser.add_argument("--max_length", type=int, default=1024, help="Maximum sequence length")
+    parser.add_argument("--max_prompt_length", type=int, default=512, help="Maximum prompt length")
     parser.add_argument("--accelerator_config", type=str, help="Path to accelerate config file")
 
-    
-    args = parser.parse_args()
-    
-    # Force use our print callback
-    if TRL_USE_RICH:
-        args.disable_tqdm = True
-        console = Console()
+    return parser.parse_args()
 
-    ################
-    # Regular Model & Tokenizer
-    ################
-    torch_dtype = (
-        args.torch_dtype
-        if args.torch_dtype in ["auto", None]
-        else getattr(torch, args.torch_dtype)
-    )
-    
-    # Set up quantization config with CPU offloading
-    # Configuring quantization with CPU offload
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,  # Enable 4-bit quantization
-        bnb_4bit_use_double_quant=True,  # Use double quantization
-        bnb_4bit_quant_type='nf4',  # Quantization type, e.g., 'nf4'
-        bnb_4bit_compute_dtype=torch.float32,  # Set computation dtype
-        load_in_8bit_fp32_cpu_offload=True,  # Enable CPU offloading for modules
-    )
-    quantization_config = bnb_config
-    
-    model_kwargs = dict(
-        revision=args.model_revision,
-        attn_implementation=args.attn_implementation,
-        torch_dtype=torch_dtype,
-        use_cache=False if args.gradient_checkpointing else True,
-        device_map="auto",
-        quantization_config=quantization_config,
-    )
-    
-    # Step 1: Load the base LLaMA2-7B model   
-    max_seq_length = 2048 # Supports automatic RoPE Scaling, so choose any number.
-    
+def main():
+    args = parse_arguments()
+
+    # Load base model and tokenizer using FastLanguageModel
+    max_seq_length = 2048
     model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name = args.model_name_or_path,
-        max_seq_length = max_seq_length,
-        dtype = None, # None for auto detection. Float16 for Tesla T4, V100, Bfloat16 for Ampere+
-        load_in_4bit = True, # Use 4bit quantization to reduce memory usage. Can be False.
-    )    
-    
-    # Step 2: Load the adapters
-    # Get the absolute path to the directory where the script is located
+        model_name=args.model_name_or_path,
+        max_seq_length=max_seq_length,
+        dtype=None,
+        load_in_4bit=True,
+    )
+
+    # Load PEFT adapters
     script_dir = os.path.dirname(os.path.abspath(__file__))
     adapter_dir = os.path.join(script_dir, "llama", "llama-7b-etpc")
-
     peft_config = PeftConfig.from_pretrained(adapter_dir)
-
     model = PeftModel.from_pretrained(model, adapter_dir)
+
+    # Load reference adapter for DPO
+    model.load_adapter(adapter_dir, adapter_name="reference")
+
+    # Apply additional LoRA weights
+    model = FastLanguageModel.get_peft_model(model, **vars(peft_config))
     
-    # Load the adapter a second time, with a different name, which will be our reference model.
-    model.load_adapter(adapter_dir, adapter_name="reference")    
-   
-    # Do model patching and add fast LoRA weights
-    model = FastLanguageModel.get_peft_model(model,**vars(peft_config))
-    
-    ################
-    # Optional rich context managers
-    ###############
+    # Context manager setup for rich progress bars
     init_context = nullcontext() if not TRL_USE_RICH else console.status("[bold green]Initializing the DPOTrainer...")
-    save_context = (
-        nullcontext()
-        if not TRL_USE_RICH
-        else console.status(f"[bold green]Training completed! Saving the model to {args.output_dir}")
-    )
+    save_context = nullcontext() if not TRL_USE_RICH else console.status(f"[bold green]Training completed! Saving the model to {args.output_dir}")
 
-    ################
-    # Dataset
-    ################
-    # Construct the path to the dataset
+    # Load dataset
     dataset_path = os.path.join(script_dir, "data", "apty_dataset.parquet")
+    ds = load_dataset("parquet", data_files=dataset_path)
     
-    file_extension = os.path.splitext(dataset_path)[-1].lower()
-
-    if file_extension == ".parquet":
-        ds = load_dataset("parquet", data_files=dataset_path)
-    else:
-        # Handle other formats as needed
-        ds = load_dataset(dataset_path)
-    
+    # Optionally limit dataset size for a sanity check
     if args.sanity_check:
-        for key in ds:
-            ds[key] = ds[key].select(range(50))
+        ds = ds.map(lambda x: x.select(range(50)))
 
-    # Split the dataset into train and test
-    train_test_split = ds['train'].train_test_split(test_size=0.2)  # 80% train, 20% validation
+    # Split dataset into train and validation sets
+    train_test_split = ds['train'].train_test_split(test_size=0.2)
     ds = DatasetDict({
         'train': train_test_split['train'],
         'validation': train_test_split['test'],
     })
 
+    # Prepare datasets for training
     train_dataset = ds['train']
     eval_dataset = ds['validation']
 
-    ################
-    # Training
-    ################
+    # Training setup with DPOTrainer
     with init_context:
         trainer = DPOTrainer(
             model,
-            # model_adapter_name="train2",
-            # ref_adapter_name="reference",
             args=TrainingArguments(
-                per_device_train_batch_size = 4,
-                gradient_accumulation_steps = 8,
-                warmup_ratio = 0.1,
-                num_train_epochs = 3,
-                fp16 = not is_bfloat16_supported(),
-                bf16 = is_bfloat16_supported(),
-                logging_steps = 1,
-                optim = "adamw_8bit",
-                seed = 42,
-                output_dir = "outputs",
+                per_device_train_batch_size=args.per_device_train_batch_size,
+                gradient_accumulation_steps=args.gradient_accumulation_steps,
+                warmup_ratio=args.warmup_ratio,
+                num_train_epochs=args.num_train_epochs,
+                fp16=not is_bfloat16_supported(),
+                bf16=is_bfloat16_supported(),
+                logging_steps=args.logging_steps,
+                optim=args.optim,
+                seed=args.seed,
+                output_dir=args.output_dir,
             ),
-            beta=0.1,
+            beta=args.beta,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
             tokenizer=tokenizer,
-            peft_config=peft_config,
-            max_length = 1024,
-            max_prompt_length = 512,
+            max_length=args.max_length,
+            max_prompt_length=args.max_prompt_length,
             callbacks=[RichProgressCallback] if TRL_USE_RICH else None,
         )
 
+    # Start training
     trainer.train()
 
+    # Save the trained model
     with save_context:
         trainer.save_model(args.output_dir)
+
+if __name__ == "__main__":
+    main()
