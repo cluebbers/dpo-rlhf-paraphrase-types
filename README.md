@@ -1,28 +1,39 @@
 # dpo-rhlf-paraphrase-types
 
+## Sources
+
+- finetuned Llama2-7b model: https://github.com/jpwahle/emnlp23-paraphrase-types
+- DPO script: https://huggingface.co/docs/trl/dpo_trainer
+- Dataset: https://huggingface.co/datasets/worta/apty
+- unsloth: https://github.com/unslothai/unsloth
+
 ## Setup
 
 1. Clone the repository:
+
    ```bash
    git clone https://github.com/cluebbers/dpo-rhlf-paraphrase-types.git
    cd repository
-   
+
 2. Create and activate a virtual environment:
+
    ```bash
    conda create --name unsloth_env \
     python=3.10 \
     pytorch-cuda=<11.8/12.1> \
     pytorch cudatoolkit xformers -c pytorch -c nvidia -c xformers \
     -y
-conda activate unsloth_env
 
-pip install "unsloth[colab-new] @ git+https://github.com/unslothai/unsloth.git"
+   conda activate unsloth_env
 
-pip install --no-deps "trl<0.9.0" peft accelerate bitsandbytes
+   pip install unsloth
 
-pip install trl
+   pip install --no-deps "trl<0.9.0" peft accelerate bitsandbytes
+
+   pip install trl
 
 ## Run
+
    ```bash
    python src/run_dpo.py \
     --dataset_name=/home/slim/Documents/06_DataScience/06_Projects/M.Inf.2901_Master/emnlp23-paraphrase-types-dpo/data/apty_dataset.parquet \
