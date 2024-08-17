@@ -36,7 +36,6 @@
 
    ```bash
    python src/run_dpo.py \
-    --dataset_name=/home/slim/Documents/06_DataScience/06_Projects/M.Inf.2901_Master/emnlp23-paraphrase-types-dpo/data/apty_dataset.parquet \
     --model_name_or_path=meta-llama/Llama-2-7b-hf \
     --per_device_train_batch_size 1 \
     --learning_rate 1e-3 \
