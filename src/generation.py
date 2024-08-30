@@ -72,8 +72,16 @@ def generate_paraphrases(model, tokenizer, sentences, paraphrase_type, batch_siz
     for i in range(0, len(sentences), batch_size):
         batch_sentences = sentences[i:i + batch_size]
 
+        # Create the prompt in the same format used during finetuning
+        prompts = [
+            (
+                f"Given the following sentence, generate a paraphrase with the following types. Sentence:"
+                f" {sentence} Paraphrase Types: {paraphrase_type}"
+            ) for sentence in batch_sentences
+        ]
+        
         # Tokenize input batch
-        inputs = tokenizer(batch_sentences, return_tensors="pt", padding=True, truncation=True).to(device)
+        inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True).to(device)
 
         # Generate paraphrases
         with torch.no_grad():

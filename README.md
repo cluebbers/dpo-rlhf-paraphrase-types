@@ -1,5 +1,9 @@
 # dpo-rhlf-paraphrase-types
 
+Repository for master thesis "Enhancing Paraphrase Type Generation: The Impact of DPO and RHLF Evaluated with Human-Ranked Data"
+Student: Christopher L. Luebbers
+Supervisor: Dominik Meier, Terry Ruas
+
 ## Sources
 
 - finetuned Llama2-7b model: https://github.com/jpwahle/emnlp23-paraphrase-types
@@ -33,6 +37,8 @@
    pip install trl
 
 ## Run
+
+Training
 
    ```bash
    python src/run_dpo.py \
