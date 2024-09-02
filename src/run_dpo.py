@@ -1,20 +1,7 @@
 """
 python src/run_dpo.py \
  --model_name_or_path=meta-llama/Llama-2-7b-hf \
- --per_device_train_batch_size 1 \
- --learning_rate 1e-3 \
- --gradient_accumulation_steps 1 \
- --logging_steps 10 \
- --eval_steps 10 \
- --output_dir="dpo_llama_apty_output" \
- --optim rmsprop \
- --warmup_steps 10 \
- --bf16 \
- --logging_first_step \
- --remove_unused_columns \
- --use_peft \
- --lora_r=16 \
- --lora_alpha=16
+ --output_dir="dpo_llama_apty_output" 
 """
 
 import argparse
@@ -51,39 +38,21 @@ if TRL_USE_RICH:
 def parse_arguments():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Run DPO training")
-    parser.add_argument("--dataset_name", type=str, required=True, help="Path to the dataset file")
     parser.add_argument("--model_name_or_path", type=str, required=True, help="Path to the model")
     parser.add_argument("--per_device_train_batch_size", type=int, default=1, help="Batch size per device")
     parser.add_argument("--learning_rate", type=float, default=1e-3, help="Learning rate")
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Gradient accumulation steps")
-    parser.add_argument("--warmup_steps", type=int, default=10, help="Warmup steps")
     parser.add_argument("--logging_steps", type=int, default=10, help="Logging steps")
-    parser.add_argument("--eval_steps", type=int, default=10, help="Evaluation steps")
     parser.add_argument("--output_dir", type=str, required=True, help="Output directory")
     parser.add_argument("--optim", type=str, default="adamw_8bit", help="Optimizer")
     parser.add_argument("--num_train_epochs", type=int, default=3, help="Number of training epochs")
     parser.add_argument("--warmup_ratio", type=float, default=0.1, help="Warmup ratio for learning rate scheduling")
     parser.add_argument("--bf16", action="store_true", help="Use BF16")
-    parser.add_argument("--logging_first_step", action="store_true", help="Log first step")
-    parser.add_argument("--remove_unused_columns", action="store_true", help="Do not remove unused columns")
-    parser.add_argument("--use_peft", action="store_true", help="Use PEFT")
-    parser.add_argument("--lora_r", type=int, default=16, help="LoRA rank")
-    parser.add_argument("--lora_alpha", type=int, default=16, help="LoRA alpha")
-    parser.add_argument("--torch_dtype", type=str, default="auto", help="Torch dtype, e.g., 'auto', 'float16', 'bfloat16'")
-    parser.add_argument("--load_in_4bit", action="store_true", help="Load model with 4-bit quantization") 
-    parser.add_argument("--load_in_8bit", action="store_false", help="Load model with 8-bit quantization") 
-    parser.add_argument("--model_revision", type=str, default="main", help="Model revision to use")
-    parser.add_argument("--attn_implementation", type=str, default=None, help="Attention implementation to use, if any")
-    parser.add_argument("--trust_remote_code", action="store_true", help="Allow to trust remote code when loading models")
-    parser.add_argument("--ignore_bias_buffers", action="store_true", help="Ignore bias buffers in the model")
     parser.add_argument("--sanity_check", action="store_true", help="Run a sanity check by limiting the dataset size")
-    parser.add_argument("--batch_eval_metrics", action="store_true", help="Enable batch evaluation of metrics")
-    parser.add_argument("--full_determinism", action="store_true", help="Enable full determinism for training")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--beta", type=float, default=0.1, help="Beta parameter for DPOTrainer")
     parser.add_argument("--max_length", type=int, default=1024, help="Maximum sequence length")
     parser.add_argument("--max_prompt_length", type=int, default=512, help="Maximum prompt length")
-    parser.add_argument("--accelerator_config", type=str, help="Path to accelerate config file")
 
     return parser.parse_args()
 
