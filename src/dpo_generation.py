@@ -1,7 +1,7 @@
 """
-python src/run_dpo.py \
+python src/dpo_generation.py \
  --model_name_or_path=meta-llama/Llama-2-7b-hf \
- --output_dir="dpo_llama_apty_output" 
+ --output_dir="out/dpo_llama-7b_apty" 
 """
 
 import argparse

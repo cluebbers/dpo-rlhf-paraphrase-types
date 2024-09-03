@@ -18,6 +18,7 @@ Supervisor: Dominik Meier, Terry Ruas
    ```bash
    git clone https://github.com/cluebbers/dpo-rhlf-paraphrase-types.git
    cd repository
+   ```
 
 2. Create and activate a virtual environment:
 
@@ -35,25 +36,26 @@ Supervisor: Dominik Meier, Terry Ruas
    pip install --no-deps "trl<0.9.0" peft accelerate bitsandbytes
 
    pip install trl
+   ```
 
 ## Run
 
-Training
+### Generate Prompts from APTY-Ranked dataset
 
    ```bash
-   python src/run_dpo.py \
-    --model_name_or_path=meta-llama/Llama-2-7b-hf \
-    --per_device_train_batch_size 1 \
-    --learning_rate 1e-3 \
-    --gradient_accumulation_steps 1 \
-    --logging_steps 10 \
-    --eval_steps 10 \
-    --output_dir="dpo_llama_apty_output" \
-    --optim rmsprop \
-    --warmup_steps 10 \
-    --bf16 \
-    --logging_first_step \
-    --remove_unused_columns \
-    --use_peft \
-    --lora_r=16 \
-    --lora_alpha=16
+   python src/generate_promps_apty_ranked.py
+   ```
+
+### Training
+
+   ```bash
+   python src/dpo_generation.py \
+   --model_name_or_path=meta-llama/Llama-2-7b-hf \
+   --output_dir="out/dpo_llama-7b_apty"
+   ```
+
+### Generate Paraphrases
+
+   ```bash
+   python src/generation.py
+   ```
