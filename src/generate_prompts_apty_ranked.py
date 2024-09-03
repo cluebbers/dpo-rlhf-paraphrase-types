@@ -4,59 +4,60 @@ import random
 
 from datasets import load_dataset
 import pandas as pd
-from datasets import Dataset, DatasetDict
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
 
-# Load the dataset
-data_apty_ranked = load_dataset("worta/apty", "APTY-ranked")
+def preprocess_apty_ranked_dataset(data: pd.DataFrame) -> pd.DataFrame:
+    """
+    Preprocess the APTY-ranked dataset by normalizing columns, extracting text, and cleaning data.
 
-# Convert to DataFrames
-df_apty_ranked = pd.DataFrame(data_apty_ranked['train'])
+    Args:
+        data (pd.DataFrame): The raw dataframe loaded from the dataset.
 
-# Normalize the 'meta' column to create separate columns for 'id', 'annotators', and 'APT'
-meta_df = pd.json_normalize(df_apty_ranked['meta'])
-# Drop the original 'meta' column and concatenate the new columns
-df_apty_ranked = df_apty_ranked.drop(columns=['meta'])
-df_apty_ranked = pd.concat([df_apty_ranked, meta_df], axis=1)
+    Returns:
+        pd.DataFrame: The preprocessed dataframe.
+    """
+    # Normalize the 'meta' column to create separate columns for 'id', 'annotators', and 'APT'
+    meta_df = pd.json_normalize(data['meta'])
+    data = data.drop(columns=['meta']).reset_index(drop=True)
+    data = pd.concat([data, meta_df], axis=1)
 
-# Extract the text from the nested dictionaries for 'chosen' and 'rejected'
-df_apty_ranked['original'] = df_apty_ranked['original'].apply(str)
-df_apty_ranked['chosen'] = df_apty_ranked['chosen'].apply(lambda x: x['text'] if isinstance(x, dict) else str(x))
-df_apty_ranked['rejected'] = df_apty_ranked['rejected'].apply(lambda x: x['text'] if isinstance(x, dict) else str(x))
+    # Extract the text from the nested dictionaries for 'chosen' and 'rejected'
+    data['original'] = data['original'].apply(lambda x: x['text'] if isinstance(x, dict) else str(x))
+    data['chosen'] = data['chosen'].apply(lambda x: x['text'] if isinstance(x, dict) else str(x))
+    data['rejected'] = data['rejected'].apply(lambda x: x['text'] if isinstance(x, dict) else str(x))
 
-# Check for Leading or Trailing Whitespace
-# Strip whitespace and compare to detect issues
-df_apty_ranked['original'] = df_apty_ranked['original'].str.strip()
-df_apty_ranked['chosen'] = df_apty_ranked['chosen'].str.strip()
-df_apty_ranked['rejected'] = df_apty_ranked['rejected'].str.strip()
+    # Strip whitespace
+    data['original'] = data['original'].str.strip()
+    data['chosen'] = data['chosen'].str.strip()
+    data['rejected'] = data['rejected'].str.strip()
 
-# Function to modify the last character according to the rules
-def modify_last_character(text):
+    # Modify the last character according to the rules
+    data['original'] = data['original'].apply(modify_last_character)
+    data['chosen'] = data['chosen'].apply(modify_last_character)
+    data['rejected'] = data['rejected'].apply(modify_last_character)
+
+    # Drop duplicates
+    data = data.drop_duplicates(subset=['original', 'chosen', 'rejected'])
+
+    return data
+    
+def modify_last_character(text: str) -> str:
+    """
+    Modify the last character of a string based on specific rules.
+
+    Args:
+        text (str): The text to modify.
+
+    Returns:
+        str: The modified text.
+    """
     if text.endswith('"'):
-        # Remove the last double quote
-        text = text[:-1]
+        text = text[:-1]  # Remove the last double quote
     elif text[-1].isalpha():
-        # Add a '.' if the last character is a letter
-        text += '.'
+        text += '.'  # Add a '.' if the last character is a letter
+
     return text
-
-# Apply the function to each column
-df_apty_ranked['original'] = df_apty_ranked['original'].apply(modify_last_character)
-df_apty_ranked['chosen'] = df_apty_ranked['chosen'].apply(modify_last_character)
-df_apty_ranked['rejected'] = df_apty_ranked['rejected'].apply(modify_last_character)
-
-# Drop duplicates
-df_unique_specific_columns = df_apty_ranked.drop_duplicates(subset=['original', 'chosen', "rejected"])
-
-# Stratified train-test split
-train_df, test_df = train_test_split(
-    df_unique_specific_columns, test_size=0.3, stratify=df_unique_specific_columns['APT'], random_state=42
-)
-
-# Convert DataFrames to lists of dictionaries
-train_data = train_df.to_dict(orient='records')
-test_data = test_df.to_dict(orient='records')
 
 def write_to_jsonl(data, filename):
     with open(filename, "w", encoding="utf-8") as file:
@@ -113,15 +114,33 @@ def write_to_jsonl(data, filename):
                 file.write(json.dumps(generation_entry) + "\n")
 
 
-if __name__ == "__main__":
+def main():
+    """Create JSONL files for the APTY-ranked dataset."""
+    # Load dataset
+    dataset = load_dataset("worta/apty", "APTY-ranked")
+
+    # Preprocess dataset
+    df = preprocess_apty_ranked_dataset(pd.DataFrame(dataset["train"]))
+
+    # Split dataset into train and test sets
+    train_df, test_df = train_test_split(
+        df, test_size=0.3, stratify=df["APT"], random_state=42
+    )
+
+    # Convert DataFrames to lists of dictionaries
+    train_data = train_df.to_dict(orient="records")
+    test_data = test_df.to_dict(orient="records")
+
     # Create output directory if it doesn't exist
-    if not os.path.exists("out"):
-        os.makedirs("out")
+    output_dir = "out"
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
-    # Write to JSONL files in the 'out' directory
-    write_to_jsonl(train_data, "out/detection_train.jsonl")
-    write_to_jsonl(test_data, "out/detection_test.jsonl")
-    write_to_jsonl(train_data, "out/generation_train.jsonl")
-    write_to_jsonl(test_data, "out/generation_test.jsonl")
+    # Write to JSONL files
+    write_to_jsonl(train_data, os.path.join(output_dir, "detection_train.jsonl"))
+    write_to_jsonl(test_data, os.path.join(output_dir, "detection_test.jsonl"))
+    write_to_jsonl(train_data, os.path.join(output_dir, "generation_train.jsonl"))
+    write_to_jsonl(test_data, os.path.join(output_dir, "generation_test.jsonl"))
 
-    print("JSONL files created in 'out' directory successfully!")
+if __name__ == "__main__":
+    main()
