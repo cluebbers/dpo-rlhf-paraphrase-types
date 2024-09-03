@@ -6,10 +6,10 @@ Supervisor: Dominik Meier, Terry Ruas
 
 ## Sources
 
-- finetuned Llama2-7b model: https://github.com/jpwahle/emnlp23-paraphrase-types
-- DPO script: https://huggingface.co/docs/trl/dpo_trainer
-- Dataset: https://huggingface.co/datasets/worta/apty
-- unsloth: https://github.com/unslothai/unsloth
+- finetuned Llama2-7b model: <https://github.com/jpwahle/emnlp23-paraphrase-types>
+- DPO script: <https://huggingface.co/docs/trl/dpo_trainer>
+- Dataset: <https://huggingface.co/datasets/worta/apty>
+- unsloth: <https://github.com/unslothai/unsloth>
 
 ## Setup
 
