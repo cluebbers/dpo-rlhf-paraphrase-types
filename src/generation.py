@@ -4,6 +4,7 @@ import torch
 import chardet
 from peft import PeftModel, PeftConfig
 from unsloth import FastLanguageModel
+import json
 
 def set_seed(seed):
     """
@@ -90,6 +91,7 @@ def generate_paraphrases(model, tokenizer, sentences, paraphrase_type, batch_siz
 def read_sentences_from_files(data_dir):
     """
     Reads base sentences and their paraphrase types from text files in the specified directory.
+    Only the first 10 sentences are returned for each file.
 
     Args:
         data_dir (str): The directory containing the text files to read from.
@@ -110,49 +112,64 @@ def read_sentences_from_files(data_dir):
             with open(file_path, 'r', encoding=encoding) as file:
                 lines = file.readlines()
                 paraphrase_type = lines[0].strip()
-                sentences = [line.strip() for line in lines[1:]]
+                sentences = [line.strip() for line in lines[1:11]]  # Only take the first 10 sentences
                 sentences_by_type[paraphrase_type] = sentences
                 
     return sentences_by_type
 
-def save_paraphrases(paraphrases, output_dir, model_name, paraphrase_type):
+def save_paraphrases_to_json(paraphrases, output_file):
     """
-    Saves the generated paraphrases to a text file.
+    Saves the generated paraphrases to a JSON file in the specified format.
 
     Args:
-        paraphrases (list[tuple]): A list of tuples, where each tuple contains the paraphrase type and the generated paraphrase.
-        output_dir (str): The directory where the output file should be saved.
-        model_name (str): The name of the model used to generate the paraphrases.
-        paraphrase_type (str): The type of paraphrase that was generated.
+        paraphrases (list[dict]): A list of dictionaries containing paraphrase information.
+        output_file (str): The file path to save the JSON file.
     """
-    os.makedirs(output_dir, exist_ok=True)
-    file_path = os.path.join(output_dir, f"{model_name}_{paraphrase_type}.txt")
+    with open(output_file, 'w', encoding='utf-8') as file:
+        json.dump(paraphrases, file, ensure_ascii=False, indent=4)
 
-    with open(file_path, 'w', encoding='utf-8') as file:
-        for pt, text in paraphrases:
-            file.write(f"{pt}: {text}\n")
-
-    print(f"Paraphrases for type {paraphrase_type} saved to {file_path}.\n")
+    print(f"Paraphrases saved to {output_file}.\n")
 
 
-def process_model_generation(model_name_or_path, adapter_path, sentences_by_type, output_dir, model_suffix):
+def process_model_generation(model_name_or_path, adapter_path, sentences_by_type, model_suffix):
     """
-    Generates paraphrases using the specified model and saves them.
+    Generates paraphrases using the specified model and returns them in a list.
 
     Args:
         model_name_or_path (str): The base model path or name.
         adapter_path (str): The adapter directory path.
         sentences_by_type (dict): Dictionary of sentences categorized by paraphrase type.
-        output_dir (str): Directory to save the paraphrases.
         model_suffix (str): Suffix to append to the model name in saved files.
+
+    Returns:
+        list[dict]: A list of dictionaries containing generated paraphrases information.
     """
     model, tokenizer = load_model_and_tokenizer(model_name_or_path, adapter_path)
+    all_paraphrases = []
+
     for paraphrase_type, sentences in sentences_by_type.items():
         print(f"Generating paraphrases for type: {paraphrase_type} using {model_suffix} Model")
         paraphrases = generate_paraphrases(model, tokenizer, sentences, paraphrase_type)
-        save_paraphrases(paraphrases, output_dir, model_suffix, paraphrase_type)
+        
+        for index, paraphrase in enumerate(paraphrases):
+            # Create two entries for each paraphrase, one per annotator
+            for annotator_id in range(1, 3):
+                entry = {
+                    "data": {
+                        "Annotator": annotator_id,
+                        "Original": sentences[index],
+                        "APT": paraphrase_type,
+                        "Paraphrase": paraphrase,
+                        "Kind": model_suffix,
+                        "Index": index
+                    }
+                }
+                all_paraphrases.append(entry)
+
     del model, tokenizer
     torch.cuda.empty_cache()
+
+    return all_paraphrases
            
 def main():
     """
@@ -166,13 +183,17 @@ def main():
     etpc_adapter_path = os.path.join(script_dir, "llama", "llama-7b-etpc")
     dpo_adapter_path = "out/dpo_llama-7b_apty"
     data_dir = os.path.join(script_dir, "basesentences")
-    output_dir = "out/generated_paraphrases"
+    output_file = "out/generated_paraphrases.json"
 
     sentences_by_type = read_sentences_from_files(data_dir)
     
-    process_model_generation(base_model_name_or_path, None, sentences_by_type, output_dir, "base_model")
-    process_model_generation(base_model_name_or_path, etpc_adapter_path, sentences_by_type, output_dir, "etpc_model")
-    process_model_generation(base_model_name_or_path, dpo_adapter_path, sentences_by_type, output_dir, "dpo_model")
+    # Generate paraphrases for all models and aggregate in one JSON file
+    all_paraphrases = []
+    all_paraphrases.extend(process_model_generation(base_model_name_or_path, None, sentences_by_type, "base_model"))
+    all_paraphrases.extend(process_model_generation(base_model_name_or_path, etpc_adapter_path, sentences_by_type, "etpc_model"))
+    all_paraphrases.extend(process_model_generation(base_model_name_or_path, dpo_adapter_path, sentences_by_type, "dpo_model"))
+
+    save_paraphrases_to_json(all_paraphrases, output_file)
     
 if __name__ == "__main__":
     main()
