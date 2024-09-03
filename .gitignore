@@ -1,4 +1,3 @@
-dpo_llama_apty_output/
 src/llama/
-src/generated_paraphrases
 src/basesentences
+out/
