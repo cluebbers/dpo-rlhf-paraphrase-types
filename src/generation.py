@@ -152,19 +152,16 @@ def process_model_generation(model_name_or_path, adapter_path, sentences_by_type
         paraphrases = generate_paraphrases(model, tokenizer, sentences, paraphrase_type)
         
         for index, paraphrase in enumerate(paraphrases):
-            # Create two entries for each paraphrase, one per annotator
-            for annotator_id in range(1, 3):
-                entry = {
-                    "data": {
-                        "Annotator": annotator_id,
-                        "Original": sentences[index],
-                        "APT": paraphrase_type,
-                        "Paraphrase": paraphrase,
-                        "Kind": model_suffix,
-                        "Index": index
-                    }
+            entry = {
+                "data": {
+                    "Original": sentences[index],
+                    "APT": paraphrase_type,
+                    "Paraphrase": paraphrase,
+                    "Kind": model_suffix,
+                    "Index": index
                 }
-                all_paraphrases.append(entry)
+            }
+            all_paraphrases.append(entry)
 
     del model, tokenizer
     torch.cuda.empty_cache()
