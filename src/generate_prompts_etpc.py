@@ -89,9 +89,9 @@ if __name__ == "__main__":
         os.makedirs("out")
 
     # Write to JSONL files in the 'out' directory
-    write_to_jsonl(train_data, "out/detection_train.jsonl")
-    write_to_jsonl(test_data, "out/detection_test.jsonl")
-    write_to_jsonl(train_data, "out/generation_train.jsonl")
-    write_to_jsonl(test_data, "out/generation_test.jsonl")
+    write_to_jsonl(train_data, "out/detection_etpc_train.jsonl")
+    write_to_jsonl(test_data, "out/detection_etpc_test.jsonl")
+    write_to_jsonl(train_data, "out/generation_etpc_train.jsonl")
+    write_to_jsonl(test_data, "out/generation_etpc_test.jsonl")
 
     print("JSONL files created in 'out' directory successfully!")

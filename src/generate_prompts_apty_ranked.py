@@ -138,9 +138,9 @@ def main():
 
     # Write to JSONL files
     write_to_jsonl(train_data, os.path.join(output_dir, "detection_apty_ranked_train.jsonl"))
-    write_to_jsonl(test_data, os.path.join(output_dir, "detection_apty_ranked_train_test.jsonl"))
-    write_to_jsonl(train_data, os.path.join(output_dir, "generation_apty_ranked_train_train.jsonl"))
-    write_to_jsonl(test_data, os.path.join(output_dir, "generation_apty_ranked_train_test.jsonl"))
+    write_to_jsonl(test_data, os.path.join(output_dir, "detection_apty_ranked_test.jsonl"))
+    write_to_jsonl(train_data, os.path.join(output_dir, "generation_apty_ranked_train.jsonl"))
+    write_to_jsonl(test_data, os.path.join(output_dir, "generation_apty_ranked_test.jsonl"))
 
 if __name__ == "__main__":
     main()
