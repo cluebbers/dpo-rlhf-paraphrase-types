@@ -84,7 +84,18 @@ def generate_paraphrases(model, tokenizer, sentences, paraphrase_type, batch_siz
 
         for output in outputs:
             generated_text = tokenizer.decode(output, skip_special_tokens=True)
-            paraphrases.append((paraphrase_type, generated_text))
+            
+            # Find the start of the generated paraphrase after "Generated Paraphrase: "
+            paraphrase_start = "Generated Paraphrase: "
+            paraphrase_index = generated_text.find(paraphrase_start)
+            
+            # If "Generated Paraphrase: " is found, remove everything before it
+            if paraphrase_index != -1:
+                generated_paraphrase = generated_text[paraphrase_index + len(paraphrase_start):].strip()
+            else:
+                generated_paraphrase = generated_text.strip()  # Default to the full generated text if not found
+
+            paraphrases.append((generated_paraphrase))
     
     return paraphrases
 
@@ -151,10 +162,10 @@ def process_model_generation(model_name_or_path, adapter_path, sentences_by_type
         print(f"Generating paraphrases for type: {paraphrase_type} using {model_suffix} Model")
         paraphrases = generate_paraphrases(model, tokenizer, sentences, paraphrase_type)
         
-        for index, paraphrase in enumerate(paraphrases):
+        for index, paraphrase in enumerate(paraphrases, start=1):
             entry = {
                 "data": {
-                    "Original": sentences[index],
+                    "Original": sentences[index - 1],
                     "APT": paraphrase_type,
                     "Paraphrase": paraphrase,
                     "Kind": model_suffix,
