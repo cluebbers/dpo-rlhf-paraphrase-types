@@ -47,7 +47,6 @@ def parse_arguments():
     parser.add_argument("--num_train_epochs", type=int, default=3, help="Number of training epochs")
     parser.add_argument("--warmup_ratio", type=float, default=0.1, help="Warmup ratio for learning rate scheduling")
     parser.add_argument("--bf16", action="store_true", help="Use BF16")
-    parser.add_argument("--sanity_check", action="store_true", help="Run a sanity check by limiting the dataset size")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     parser.add_argument("--beta", type=float, default=0.1, help="Beta parameter for DPOTrainer")
     parser.add_argument("--max_length", type=int, default=1024, help="Maximum sequence length")
@@ -123,8 +122,8 @@ def main():
     model, tokenizer = load_and_prepare_model(args.model_name_or_path, adapter_dir)
                                               
     # Load dataset from JSONL files
-    train_json_path = "out/generation_train.jsonl"
-    eval_json_path = "out/generation_test.jsonl"
+    train_json_path = "out/generation_apty_ranked_train.jsonl"
+    eval_json_path = "out/generation_apty_ranked_test.jsonl"
     ds = load_datasets(train_json_path, eval_json_path)
     
     # Prepare datasets for training
