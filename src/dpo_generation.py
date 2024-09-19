@@ -1,149 +1,532 @@
-"""
-python src/dpo_generation.py \
- --model_name_or_path=meta-llama/Llama-2-7b-hf \
- --output_dir="out/dpo_llama-7b_apty" 
-"""
-
-import argparse
-import logging
 import os
-from contextlib import nullcontext
+import argparse
 
 import torch
-from datasets import load_dataset, DatasetDict
-from transformers import TrainingArguments
-from peft import PeftModel, PeftConfig
-from trl import DPOTrainer, RichProgressCallback
-from unsloth import FastLanguageModel, PatchDPOTrainer, is_bfloat16_supported
-from distutils.util import strtobool
+from datasets import load_dataset
+from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
+from rouge import Rouge
+from tqdm import tqdm
+from transformers import (
+    AutoTokenizer,
+    BartForConditionalGeneration,
+    PegasusForConditionalGeneration,
+    Trainer,
+    TrainingArguments,
+)
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from trl import DPOTrainer
 
-# Initialize Hugging Face Hub login (if needed)
-from huggingface_hub import login
-login(new_session=False)
+def encode_data(original, target, tokenizer):
+    """
+    Encodes the original and target data using a tokenizer.
 
-TRL_USE_RICH = strtobool(os.getenv("TRL_USE_RICH", "0"))
+    Args:
+        original (str): The original data.
+        target (str): The target data.
+        tokenizer (Tokenizer): The tokenizer to use.
 
-def initialize_logging():
-    """Initialize logging settings for rich logging.""" 
-    if TRL_USE_RICH:
-        from rich.console import Console
-        from rich.logging import RichHandler
-        logging.basicConfig(
-            format="%(message)s", datefmt="[%X]", handlers=[RichHandler()], level=logging.INFO
+    Returns:
+        dict: The encoded inputs and labels.
+
+    Example:
+        ```python
+        original = "This is the original data."
+        target = "This is the target data."
+        tokenizer = Tokenizer()
+        encoded_data = encode_data(original, target, tokenizer)
+        print(encoded_data)
+        ```
+    """
+    inputs = tokenizer(
+        original,
+        return_tensors="pt",
+        truncation=True,
+        padding="max_length",
+        max_length=128,
+    )
+    targets = tokenizer(
+        target,
+        return_tensors="pt",
+        truncation=True,
+        padding="max_length",
+        max_length=128,
+    )
+    return {
+        "input_ids": inputs["input_ids"],
+        "attention_mask": inputs["attention_mask"],
+        "labels": targets["input_ids"],
+    }
+
+def modify_last_character(text: str) -> str:
+    """
+    Modify the last character of a string based on specific rules.
+
+    Args:
+        text (str): The text to modify.
+
+    Returns:
+        str: The modified text.
+    """
+    if text.endswith('"'):
+        text = text[:-1]  # Remove the last double quote
+    elif text[-1].isalpha():
+        text += '.'  # Add a '.' if the last character is a letter
+
+    return text
+
+class ParaphraseDataset(torch.utils.data.Dataset):
+    """A dataset class for paraphrase generation.
+
+    Args:
+        data (list): The dataset.
+        tokenizer (Tokenizer): The tokenizer to use.
+
+    Example:
+        ```python
+        dataset = ParaphraseDataset(data, tokenizer)
+        ```
+    """
+
+    def __init__(self, data, tokenizer):
+        self.data = data
+        self.tokenizer = tokenizer
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        row = self.data[idx]
+        sentence1 = row["question1"]
+        sentence2 = row["question2"]
+
+        # Tokenize sentence1 for input_ids
+        input_data = self.tokenizer(
+            sentence1,
+            return_tensors="pt",
+            padding="max_length",
+            truncation=True,
+            max_length=512,
         )
-        return Console()
-    return None
 
-def parse_arguments():
-    """Parse command-line arguments."""
-    parser = argparse.ArgumentParser(description="Run DPO training")
-    parser.add_argument("--model_name_or_path", type=str, required=True, help="Path to the model")
-    parser.add_argument("--per_device_train_batch_size", type=int, default=1, help="Batch size per device")
-    parser.add_argument("--learning_rate", type=float, default=1e-3, help="Learning rate")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Gradient accumulation steps")
-    parser.add_argument("--logging_steps", type=int, default=10, help="Logging steps")
-    parser.add_argument("--output_dir", type=str, required=True, help="Output directory")
-    parser.add_argument("--optim", type=str, default="adamw_8bit", help="Optimizer")
-    parser.add_argument("--num_train_epochs", type=int, default=3, help="Number of training epochs")
-    parser.add_argument("--warmup_ratio", type=float, default=0.1, help="Warmup ratio for learning rate scheduling")
-    parser.add_argument("--bf16", action="store_true", help="Use BF16")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
-    parser.add_argument("--beta", type=float, default=0.1, help="Beta parameter for DPOTrainer")
-    parser.add_argument("--max_length", type=int, default=1024, help="Maximum sequence length")
-    parser.add_argument("--max_prompt_length", type=int, default=512, help="Maximum prompt length")
+        # Tokenize sentence2 for labels
+        label_data = self.tokenizer(
+            sentence2,
+            return_tensors="pt",
+            padding="max_length",
+            truncation=True,
+            max_length=512,
+        )
+
+        return {
+            "input_ids": input_data["input_ids"].squeeze(0),
+            "attention_mask": input_data["attention_mask"].squeeze(0),
+            "labels": label_data["input_ids"].squeeze(0),
+        }
+
+
+class ParaphraseTypeDataset(torch.utils.data.Dataset):
+    """A dataset class for paraphrase type generation.
+
+    Args:
+        data (list): The dataset.
+        tokenizer (Tokenizer): The tokenizer to use.
+
+    Example:
+        ```python
+        dataset = ParaphraseTypeDataset(data, tokenizer)
+        ```
+    """
+
+    def __init__(self, data, tokenizer):
+        self.data = data
+        self.tokenizer = tokenizer
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        row = self.data[idx]
+        sentence1 = self.add_paraphrase_type_tags(
+            row["sentence1_tokenized"],
+            row["sentence1_segment_location_indices"],
+            row["paraphrase_type_ids"],
+        )
+        sentence2 = row["sentence2"]
+
+        # Tokenize sentence1 for input_ids
+        input_data = self.tokenizer(
+            sentence1,
+            return_tensors="pt",
+            padding="max_length",
+            truncation=True,
+            max_length=512,
+        )
+
+        # Tokenize sentence2 for labels
+        label_data = self.tokenizer(
+            sentence2,
+            return_tensors="pt",
+            padding="max_length",
+            truncation=True,
+            max_length=512,
+        )
+
+        return {
+            "input_ids": input_data["input_ids"].squeeze(0),
+            "attention_mask": input_data["attention_mask"].squeeze(0),
+            "labels": label_data["input_ids"].squeeze(0),
+        }
+        
+    def add_paraphrase_type_tags(self, sentence, segment_indices, type_ids):
+        """Adds paraphrase type tags to specific indices in a sentence.
+
+        Args:
+            sentence (list): The input sentence as a list of tokens.
+            segment_indices (list): The indices of the segments to tag.
+            type_ids (list): The corresponding type IDs for each segment.
+
+        Returns:
+            str: The modified sentence with paraphrase type tags added.
+
+        Example:
+            ```python
+            sentence = ["This", "is", "a", "sentence", "."]
+            segment_indices = [[0, 3]]
+            type_ids = [1]
+            modified_sentence = add_paraphrase_type_tags(sentence, segment_indices, type_ids)
+            print(modified_sentence)
+            ```
+        """
+        for indices, type_id in zip(segment_indices, type_ids):
+            for index in indices:
+                sentence[index] = f"<type-{type_id}>{sentence[index]}"
+        return " ".join(sentence)
+
+from datasets import Dataset
+import pandas as pd
+from sklearn.model_selection import train_test_split
+
+from datasets import Dataset
+
+def load_and_preprocess_apty_dataset(dataset):
+    """
+    Load and preprocess the APTY-ranked dataset into Hugging Face Dataset format for DPOTrainer.
+    
+    Args:
+        dataset: The raw dataset object containing 'train' data.
+        
+    Returns:
+        train_dataset (Dataset): Training dataset as Hugging Face Dataset object.
+        test_dataset (Dataset): Validation dataset as Hugging Face Dataset object.
+    """
+    
+    # Convert dataset into a pandas DataFrame
+    data = pd.DataFrame(dataset["train"])
+    
+    # Normalize the 'meta' column to create separate columns for 'id', 'annotators', and 'APT'
+    meta_df = pd.json_normalize(data['meta'])
+    data = data.drop(columns=['meta']).reset_index(drop=True)
+    data = pd.concat([data, meta_df], axis=1)
+
+    # Extract the text from the nested dictionaries for 'chosen' and 'rejected'
+    data['original'] = data['original'].apply(lambda x: str(x['text']) if isinstance(x, dict) else str(x))
+    data['chosen'] = data['chosen'].apply(lambda x: str(x['text']) if isinstance(x, dict) else str(x))
+    data['rejected'] = data['rejected'].apply(lambda x: str(x['text']) if isinstance(x, dict) else str(x))
+
+    # Strip whitespace
+    data['original'] = data['original'].str.strip()
+    data['chosen'] = data['chosen'].str.strip()
+    data['rejected'] = data['rejected'].str.strip()
+
+    # Rename columns to match DPOTrainer's expected format
+    data = data.rename(columns={'original': 'prompt'})
+
+    # Split the dataset into training and test sets
+    train_df, test_df = train_test_split(data, test_size=0.3, stratify=data["APT"], random_state=42)
+
+    # Convert the pandas DataFrames to Hugging Face Dataset objects
+    train_dataset = Dataset.from_pandas(train_df)
+    test_dataset = Dataset.from_pandas(test_df)
+
+    return train_dataset, test_dataset
+
+def parse_args():
+    """
+    Parses the command line arguments and returns the parsed arguments.
+
+    Returns:
+        argparse.Namespace: The parsed command line arguments.
+
+    Example:
+        ```python
+        args = parse_args()
+        print(args.model_name)
+        ```"""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model_name", type=str, default="facebook/bart-large")
+    parser.add_argument(
+        "--task_name",
+        type=str,
+        default="paraphrase-type-generation",
+        help="Name of the task to use",
+    )
+
     return parser.parse_args()
 
-def load_and_prepare_model(model_name_or_path, adapter_dir):
-    """Load the base model, tokenizer, and apply PEFT adapters."""
-    max_seq_length = 2048
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=model_name_or_path,
-        max_seq_length=max_seq_length,
-        dtype=None,
-        load_in_4bit=True,
-    )
-    
-    # Load PEFT adapters
-    peft_config = PeftConfig.from_pretrained(adapter_dir)
-    model = PeftModel.from_pretrained(model, adapter_dir)
-    
-    # Load reference adapter for DPO
-    model.load_adapter(adapter_dir, adapter_name="reference")
-    
-    # Apply additional LoRA weights
-    model = FastLanguageModel.get_peft_model(model, **vars(peft_config))
-    
-    return model, tokenizer
 
-def load_datasets(train_json_path, eval_json_path):
-    """Load the datasets from JSONL files."""
-    train_dataset = load_dataset('json', data_files={'train': train_json_path})['train']
-    validation_dataset = load_dataset('json', data_files={'validation': eval_json_path})['validation']
-    return DatasetDict({
-        'train': train_dataset,
-        'validation': validation_dataset,
-    })
+def calculate_bleu(reference, candidate):
+    """
+    Calculates the BLEU score between a reference sentence and a candidate sentence.
+
+    Args:
+        reference (list): The reference sentences.
+        candidate (str): The candidate sentence.
+
+    Returns:
+        float: The BLEU score."""
+
+    smoothing = (
+        SmoothingFunction().method1
+    )  # Using SmoothingFunction's method1 for avoiding division by zero
+    return sentence_bleu([reference], candidate, smoothing_function=smoothing)
+
+
+def evaluate(predictions, targets):
+    """
+    Evaluates the predictions against the target references using BLEU and ROUGE scores.
+
+    Args:
+        predictions (list): The predicted sentences.
+        targets (list): The target reference sentences.
+
+    Returns:
+        dict: A dictionary containing the BLEU score, ROUGE-1 score, ROUGE-2 score,
+        and ROUGE-L score.
+
+    Example:
+        ```python
+        predictions = ["This is a predicted sentence."]
+        targets = ["This is a target sentence."]
+
+        evaluation_results = evaluate(predictions, targets)
+        print(evaluation_results)
+        ```"""
+
+    bleu_score = 0.0
+    rouge_scores = {
+        "rouge-1": {"f": 0.0},
+        "rouge-2": {"f": 0.0},
+        "rouge-l": {"f": 0.0},
+    }
+
+    if predictions and len(predictions) > 0:
+        # BLEU Score
+        for taget, prediction in zip(targets, predictions):
+            b_sc = calculate_bleu(taget, prediction)
+            bleu_score += b_sc
+        bleu_score /= len(predictions)
+
+        # ROUGE Scores
+        rouge_calculator = Rouge()
+        rouge_scores = rouge_calculator.get_scores(predictions, targets, avg=True)
+
+    return {
+        "bleu": bleu_score,
+        "rouge-1": rouge_scores["rouge-1"]["f"],
+        "rouge-2": rouge_scores["rouge-2"]["f"],
+        "rouge-l": rouge_scores["rouge-l"]["f"],
+    }
+
+
+def eval_loop(data_loader, model, tokenizer):
+    """
+    Performs evaluation on a given data loader using a pre-trained model and tokenizer.
+
+    Args:
+        data_loader: The data loader object.
+        model: The pre-trained model used for evaluation.
+        tokenizer: The tokenizer object used for encoding and decoding.
+
+    Returns:
+        dict: A dictionary containing the evaluation results.
+
+    Example:
+        ```python
+        data_loader = DataLoader(dataset, batch_size=32)
+        model = PretrainedModel()
+        tokenizer = Tokenizer()
+
+        evaluation_results = eval_loop(data_loader, model, tokenizer)
+        print(evaluation_results)
+        ```"""
+    model.eval()
+
+    avg_scores = {"bleu": [], "rouge-1": [], "rouge-2": [], "rouge-l": []}
+
+    with torch.no_grad():
+        for batch in tqdm(data_loader):
+            inputs = batch["input_ids"].to(model.device)
+            attention_masks = batch["attention_mask"].to(model.device)
+            outputs = model.generate(inputs, attention_mask=attention_masks)
+
+            # Convert to text
+            pred_texts = [
+                tokenizer.decode(output, skip_special_tokens=True, clean_up_tokenization_spaces=True) for output in outputs
+            ]
+            target_texts = [
+                tokenizer.decode(target, skip_special_tokens=True, clean_up_tokenization_spaces=True)
+                for target in batch["labels"]
+            ]
+            scores = evaluate(pred_texts, target_texts)
+            for key, value in scores.items():
+                avg_scores[key].append(value)
+
+    for key, value in avg_scores.items():
+        avg_scores[key] = sum(value) / len(value)
+
+    return avg_scores
+
+def load_datasets(task_name, tokenizer, device):
+    """
+    Load datasets based on the task name.
+
+    Args:
+        task_name (str): Name of the task (e.g., "paraphrase-type-generation", "dpo-generation").
+        tokenizer (Tokenizer): Tokenizer for processing the datasets.
+
+    Returns:
+        train_dataset: The training dataset.
+        eval_dataset: The evaluation dataset.
+    """
+    if task_name == "paraphrase-type-generation":
+        dataset = load_dataset("jpwahle/etpc").filter(lambda x: x["etpc_label"] == 1)
+        dataset = dataset["train"].train_test_split(test_size=0.2)
+        train_dataset = ParaphraseTypeDataset(dataset["train"], tokenizer)
+        eval_dataset = ParaphraseTypeDataset(dataset["test"], tokenizer)
+        
+    elif task_name == "paraphrase-generation":
+        dataset = load_dataset("glue", "qqp")
+        train_dataset = ParaphraseDataset(dataset["train"], tokenizer)
+        eval_dataset = ParaphraseDataset(dataset["validation"], tokenizer)
+        
+    elif "dpo" in task_name:
+        dataset = load_dataset("worta/apty", "APTY-ranked")
+        train_dataset, eval_dataset = load_and_preprocess_apty_dataset(dataset)
+        
+    return train_dataset, eval_dataset
+
+
+def evaluate_on_datasets(model, tokenizer, eval_datasets):
+    """
+    Evaluate the model on different datasets.
+
+    Args:
+        model: The trained model.
+        tokenizer: The tokenizer used with the model.
+        eval_datasets (dict): Dictionary of datasets to evaluate on.
+
+    Returns:
+        dict: Dictionary containing evaluation metrics for each dataset.
+    """
+    results = {}
+    for dataset_name, dataset in eval_datasets.items():
+        val_loader = torch.utils.data.DataLoader(dataset, batch_size=8)
+        metrics = eval_loop(val_loader, model, tokenizer)
+        results[dataset_name] = metrics
+    return results
+
+
+def main():
+    args = parse_args()
     
-def setup_trainer(args, model, train_dataset, eval_dataset, tokenizer):
-    """Setup the DPOTrainer with the given arguments and datasets."""
-    return DPOTrainer(
-        model,
-        args=TrainingArguments(
-            per_device_train_batch_size=args.per_device_train_batch_size,
-            gradient_accumulation_steps=args.gradient_accumulation_steps,
-            warmup_ratio=args.warmup_ratio,
-            num_train_epochs=args.num_train_epochs,
-            fp16=not is_bfloat16_supported(),
-            bf16=is_bfloat16_supported(),
-            logging_steps=args.logging_steps,
-            optim=args.optim,
-            seed=args.seed,
-            output_dir=args.output_dir,
-        ),
-        beta=args.beta,
+    # Check if CUDA is available
+    if torch.cuda.is_available():
+        device = "cuda"
+        torch.cuda.empty_cache()  # Clear GPU cache before starting
+
+    fine_tuned_model_dir = f"./out/gen-models/{args.model_name}_paraphrase-type-generation"  # Path to the fine-tuned model
+    output_dir = f"./out/gen-models/{args.model_name}_{args.task_name}"
+    
+    # Check if fine-tuned model directory exists
+    if not os.path.exists(fine_tuned_model_dir):
+        print(f"Error: Fine-tuned model directory does not exist: {fine_tuned_model_dir}")
+        return
+    
+    # Find the latest checkpoint from the fine-tuned model directory
+    checkpoint_dir = None
+    if os.path.exists(fine_tuned_model_dir) and os.listdir(fine_tuned_model_dir):
+        checkpoint_dirs = [f for f in os.listdir(fine_tuned_model_dir) if f.startswith('checkpoint')]
+        if checkpoint_dirs:
+            checkpoint_dir = os.path.join(fine_tuned_model_dir, max(checkpoint_dirs, key=lambda x: os.path.getctime(os.path.join(fine_tuned_model_dir, x))))
+            print(f"Loading from fine-tuned checkpoint: {checkpoint_dir}")
+        else:
+            print("No checkpoint found in fine-tuned model directory.")
+            return
+    
+    # Load model and tokenizer
+    tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large")
+    model = (
+        BartForConditionalGeneration.from_pretrained(checkpoint_dir)
+        if "bart" in args.model_name
+        else PegasusForConditionalGeneration.from_pretrained(checkpoint_dir)
+    )
+    model = model.to(device)  # Move model to GPU
+
+    # Load training and evaluation datasets
+    train_dataset, eval_dataset = load_datasets(args.task_name, tokenizer, device)
+
+    # Set up training arguments  
+    training_args = TrainingArguments(
+        per_device_train_batch_size=16,  # Increase if GPU memory allows
+        gradient_accumulation_steps=2,  # Accumulate gradients if memory is tight
+        num_train_epochs=3,
+        logging_dir="./logs",
+        logging_steps=500,
+        do_train=True,
+        evaluation_strategy="epoch",
+        save_steps=2000,
+        save_total_limit=2,
+        output_dir=output_dir,
+        remove_unused_columns=False,  # Ensures unused columns aren't removed for DPOTrainer
+        fp16=True, # Enable mixed precision training
+    )
+            
+    # Set up trainer
+    trainer = DPOTrainer(
+        model=model,
+        args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
+        beta=0.1,
         tokenizer=tokenizer,
-        max_length=args.max_length,
-        max_prompt_length=args.max_prompt_length,
-        callbacks=[RichProgressCallback] if TRL_USE_RICH else None,
+        max_length=512,
+        max_prompt_length=128,
+        max_target_length=128,
     )
     
-def main():
-    # Initialize everything
-    args = parse_arguments()
-    console = initialize_logging()
-    PatchDPOTrainer()  # Patch the DPOTrainer with Unsloth optimizations
-    torch.cuda.empty_cache()  # Clear GPU cache before starting
+    # Train the model 
+    trainer.train() 
 
-    # Load model and tokenizer
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    adapter_dir = os.path.join(script_dir, "llama", "llama-7b-etpc")
-    model, tokenizer = load_and_prepare_model(args.model_name_or_path, adapter_dir)
-                                              
-    # Load dataset from JSONL files
-    train_json_path = "out/generation_apty_ranked_train.jsonl"
-    eval_json_path = "out/generation_apty_ranked_test.jsonl"
-    ds = load_datasets(train_json_path, eval_json_path)
-    
-    # Prepare datasets for training
-    train_dataset = ds['train']
-    eval_dataset = ds['validation']
+    # Prepare evaluation datasets (ETPC and QQP)
+    etpc_dataset = load_dataset("jpwahle/etpc").filter(lambda x: x["etpc_label"] == 1)
+    etpc_dataset = etpc_dataset["train"].train_test_split(test_size=0.2)  # Split for evaluation
+    eval_datasets = {
+        "ETPC": ParaphraseTypeDataset(etpc_dataset["test"], tokenizer),  # Use test split for evaluation
+        #"QQP": ParaphraseDataset(load_dataset("glue", "qqp")["validation"], tokenizer),
+    }
 
-    # Context manager setup for rich progress bars
-    init_context = nullcontext() if not TRL_USE_RICH else console.status("[bold green]Initializing the DPOTrainer...")
-    save_context = nullcontext() if not TRL_USE_RICH else console.status(f"[bold green]Training completed! Saving the model to {args.output_dir}")
+    # Evaluate the model on different datasets
+    eval_results = evaluate_on_datasets(model, tokenizer, eval_datasets)
 
-    # Setup trainer
-    with init_context:
-        trainer = setup_trainer(args, model, train_dataset, eval_dataset, tokenizer)
+    # Print evaluation results
+    print("#" * 20)
+    print(f"Model: {args.model_name}")
+    print(f"Task: {args.task_name}")
+    for dataset_name, metrics in eval_results.items():
+        print(f"{dataset_name} evaluation results:", metrics)
+    print("#" * 20)
 
-    # Start training
-    trainer.train()
-
-    # Save the trained model
-    with save_context:
-        trainer.save_model(args.output_dir)
 
 if __name__ == "__main__":
     main()
