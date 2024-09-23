@@ -209,4 +209,4 @@ dependencies:
       - xformers==0.0.26.post1
       - xxhash==3.4.1
       - yarl==1.9.4
-prefix: $WORK/
+prefix: /home/slim/miniconda3/envs/dpo_env
