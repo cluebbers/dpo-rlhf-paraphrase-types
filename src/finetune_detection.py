@@ -595,8 +595,10 @@ def main():
         results = pd.DataFrame(results)
 
     # Store results
+    # Replace '/' with '_' to avoid directory creation issues
+    sanitized_dataset_name = args.dataset_name.replace('/', '_')
     results.to_csv(
-        f"{args.model_name}-{args.dataset_name}-paraphrase-{args.task_name}-results.csv",
+        f"./out/{args.model_name}-{sanitized_dataset_name}-paraphrase-{args.task_name}-results.csv",
     )
 
 
