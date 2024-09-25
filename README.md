@@ -36,6 +36,8 @@ Supervisor: Dominik Meier, Terry Ruas
    pip install --no-deps "trl<0.9.0" peft accelerate bitsandbytes
 
    pip install trl
+
+   pip install fire
    ```
 
 ## Run
