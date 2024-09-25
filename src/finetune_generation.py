@@ -346,6 +346,10 @@ def main():
         if "bart" in args.model_name
         else PegasusForConditionalGeneration.from_pretrained(args.model_name)
     )
+    
+    # Ensure the model uses all available GPUs
+    if torch.cuda.device_count() > 1:
+        model = torch.nn.DataParallel(model)
     model = model.to(args.device)
 
     if args.task_name == "paraphrase-type-generation":
