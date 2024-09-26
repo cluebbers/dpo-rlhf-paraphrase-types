@@ -2,10 +2,10 @@
 #SBATCH --job-name=paraphrase_type_gen
 #SBATCH --account=luebbers_masters
 #SBATCH --partition=gpu
-#SBATCH -t 12:00:00
+#SBATCH -t 2:00:00
 #SBATCH -n 1
 #SBATCH --nodes=1
-#SBATCH --gpus V100:1
+#SBATCH --gpus 1
 #SBATCH -c 1
 #SBATCH --mail-type=all              # send mail when job begins and ends
 #SBATCH --mail-user=c.luebbers@stud.uni-goettingen.de 
