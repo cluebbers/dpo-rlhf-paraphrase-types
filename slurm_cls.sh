@@ -42,11 +42,11 @@ python3 src/finetune_detection.py --model_name $1 --task_name $2 --dataset_name 
 
 # done
 # sbatch slurm_cls.sh bert-base-uncased paraphrase-type-detection jpwahle/etpc
+# sbatch slurm_cls.sh bert-base-uncased paraphrase-detection jpwahle/etpc
 # sbatch slurm_cls.sh microsoft/deberta-base paraphrase-type-detection jpwahle/etpc
+# sbatch slurm_cls.sh microsoft/deberta-base paraphrase-detection jpwahle/etpc
 # sbatch slurm_cls.sh FacebookAI/roberta-base paraphrase-type-detection jpwahle/etpc
+# sbatch slurm_cls.sh FacebookAI/roberta-base paraphrase-detection jpwahle/etpc
 #TODO
 # sbatch slurm_cls.sh nghuyong/ernie-2.0-large-en paraphrase-type-detection jpwahle/etpc
-# sbatch slurm_cls.sh bert-base-uncased paraphrase-detection jpwahle/etpc
-# sbatch slurm_cls.sh microsoft/deberta-base paraphrase-detection jpwahle/etpc
-# sbatch slurm_cls.sh FacebookAI/roberta-base paraphrase-detection jpwahle/etpc
 # sbatch slurm_cls.sh nghuyong/ernie-2.0-large-en paraphrase-detection jpwahle/etpc
