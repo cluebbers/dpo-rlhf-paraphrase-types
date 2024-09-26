@@ -38,9 +38,9 @@ def parse_arguments():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Run DPO training")
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-2-7b-hf", help="Path to the model")
-    parser.add_argument("--per_device_train_batch_size", type=int, default=1, help="Batch size per device")
+    parser.add_argument("--per_device_train_batch_size", type=int, default=4, help="Batch size per device")
     parser.add_argument("--learning_rate", type=float, default=1e-3, help="Learning rate")
-    parser.add_argument("--gradient_accumulation_steps", type=int, default=1, help="Gradient accumulation steps")
+    parser.add_argument("--gradient_accumulation_steps", type=int, default=2, help="Gradient accumulation steps")
     parser.add_argument("--logging_steps", type=int, default=10, help="Logging steps")
     parser.add_argument("--optim", type=str, default="adamw_8bit", help="Optimizer")
     parser.add_argument("--num_train_epochs", type=int, default=3, help="Number of training epochs")
