@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --job-name=paraphrase_type_gen
+#SBATCH --job-name=paraphrase_gen
 #SBATCH --account=luebbers_masters
 #SBATCH --partition=gpu
 #SBATCH -t 2:00:00
@@ -14,7 +14,7 @@
 
 module load miniforge3
 module load cuda
-source activate unsloth_env
+source activate wahle_env
 
 # Printing out some info.
 echo "Submitting job with sbatch from directory: ${SLURM_SUBMIT_DIR}"

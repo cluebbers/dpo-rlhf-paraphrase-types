@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --job-name=dpo_paraphrase_type_gen
+#SBATCH --job-name=dpo_llama_gen
 #SBATCH --account=luebbers_masters
 #SBATCH --partition=gpu
 #SBATCH -t 12:00:00
@@ -34,11 +34,11 @@ echo "Current environment: $(which python)"
 echo $PATH
 
 # Set PYTHONPATH to point to the correct site-packages directory
-export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/unsloth_env/lib/python3.11/site-packages:$PYTHONPATH
+#export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/unsloth_env/lib/python3.11/site-packages:$PYTHONPATH
 
 export TOKENIZERS_PARALLELISM=false
 
-python3 src/dpo_generation_llama.py --model_name $1 --adapter_dir $2
+python3 src/dpo_llama_generation.py --model_name $1 --adapter_dir $2
 
 #TODO
 # sbatch slurm_gen_dpo.sh meta-llama/Llama-2-7b-hf llama/llama-7b-etpc

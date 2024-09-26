@@ -13,32 +13,7 @@ Supervisor: Dominik Meier, Terry Ruas
 
 ## Setup
 
-1. Clone the repository:
-
-   ```bash
-   git clone https://github.com/cluebbers/dpo-rhlf-paraphrase-types.git
-   cd repository
-   ```
-
-2. Create and activate a virtual environment:
-
-   ```bash
-   conda create --name unsloth_env \
-    python=3.10 \
-    pytorch-cuda=<11.8/12.1> \
-    pytorch cudatoolkit xformers -c pytorch -c nvidia -c xformers \
-    -y
-
-   conda activate unsloth_env
-
-   pip install unsloth
-
-   pip install --no-deps "trl<0.9.0" peft accelerate bitsandbytes
-
-   pip install trl
-
-   pip install fire
-   ```
+tested with python=3.10.15 and requirements.txt
 
 ## Run
 
@@ -51,9 +26,9 @@ Supervisor: Dominik Meier, Terry Ruas
 ### Training
 
    ```bash
-   python src/dpo_generation.py \
-   --model_name_or_path=meta-llama/Llama-2-7b-hf \
-   --output_dir="out/dpo_llama-7b_apty"
+   python src/dpo_llama_generation.py \
+   --model_name=meta-llama/Llama-2-7b-hf \
+   --adapter_dir=src/llama/llama-7b-etpc
    ```
 
 ### Generate Paraphrases
