@@ -36,9 +36,16 @@ def parse_arguments():
 
 def main():    
     args = parse_arguments()
+    
+    # Check if CUDA is available
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
      
     model = AutoModelForCausalLM.from_pretrained(args.model_name)
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+    
+    # Move model to GPU if available
+    model = model.to(device)
     
     # Load PEFT adapters
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -52,6 +59,9 @@ def main():
     
     # Apply additional LoRA weights
     model = AutoModelForCausalLM.get_peft_model(model, **vars(peft_config))
+    
+    # Move model to GPU again after loading PEFT model
+    model = model.to(device)
     
     torch.cuda.empty_cache()  # Clear GPU cache before starting
                        
@@ -74,10 +84,9 @@ def main():
     training_args=DPOConfig(output_dir=f"./out/gen-models/dpo_{args.model_name}",
                             per_device_train_batch_size=1,
                             gradient_accumulation_steps=1,
-                            fp16=True,
-                            bf16=False,
                             max_length=1024,
                             max_prompt_length=512,
+                            fp16=True,
                             optim="adamw_8bit",        
                             )
     
