@@ -9,8 +9,8 @@ import os
 
 import torch
 from datasets import load_dataset, DatasetDict
-from transformers import TrainingArguments, AutoModelForCausalLM, AutoTokenizer
-from peft import PeftModel, PeftConfig
+from transformers import TrainingArguments, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from peft import PeftModel, PeftConfig, get_peft_model
 from trl.commands.cli_utils import DPOScriptArguments, TrlParser
 from trl import (
     DPOTrainer, 
@@ -40,25 +40,25 @@ def main():
     # Check if CUDA is available
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
-     
-    model = AutoModelForCausalLM.from_pretrained(args.model_name)
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
     
-    # Move model to GPU if available
-    model = model.to(device)
+    quant_config = BitsAndBytesConfig(load_in_8bit=True)
+     
+    model = AutoModelForCausalLM.from_pretrained(args.model_name, quantization_config=quant_config)
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+    tokenizer.pad_token = tokenizer.eos_token
     
     # Load PEFT adapters
     script_dir = os.path.dirname(os.path.abspath(__file__))
     adapter_dir = os.path.join(script_dir, args.adapter_dir)
     
-    peft_config = PeftConfig.from_pretrained(adapter_dir)
+    peft_config = PeftConfig.from_pretrained(adapter_dir, base_model_name_or_path=args.model_name)
     model = PeftModel.from_pretrained(model, adapter_dir)
     
     # Load reference adapter for DPO
     model.load_adapter(adapter_dir, adapter_name="reference")
     
     # Apply additional LoRA weights
-    model = AutoModelForCausalLM.get_peft_model(model, **vars(peft_config))
+    model = get_peft_model(model, peft_config=peft_config)
     
     # Move model to GPU again after loading PEFT model
     model = model.to(device)
