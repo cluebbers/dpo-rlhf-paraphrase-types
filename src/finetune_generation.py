@@ -347,9 +347,6 @@ def main():
         else PegasusForConditionalGeneration.from_pretrained(args.model_name)
     )
     
-    # Ensure the model uses all available GPUs
-    if torch.cuda.device_count() > 1:
-        model = torch.nn.DataParallel(model)
     model = model.to(args.device)
 
     if args.task_name == "paraphrase-type-generation":
@@ -367,7 +364,8 @@ def main():
    
     # Fine-tuning
     training_args = TrainingArguments(
-        per_device_train_batch_size=8,
+        per_device_train_batch_size=4,
+        per_device_eval_batch_size=4,
         num_train_epochs=3,
         logging_dir="./logs",
         logging_steps=500,
@@ -378,10 +376,10 @@ def main():
         output_dir=f"./out/gen-models/{args.model_name}_{args.task_name}",
         # use_mps_device=args.device == "mps",
         fp16=True,
-        gradient_accumulation_steps=2,  # Accumulate gradients to simulate a larger batch size
+        gradient_accumulation_steps=4,  # Accumulate gradients to simulate a larger batch size
         dataloader_num_workers=4,  # Enable multi-threaded data loading
     )
-
+    print(f"Number of GPUs available: {torch.cuda.device_count()}")
     trainer = Trainer(
         model=model,
         args=training_args,

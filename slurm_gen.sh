@@ -4,6 +4,7 @@
 #SBATCH --partition=gpu
 #SBATCH -t 12:00:00
 #SBATCH -n 1
+#SBATCH --nodes=1
 #SBATCH --gpus V100:1
 #SBATCH -c 1
 #SBATCH --mail-type=all              # send mail when job begins and ends
@@ -38,3 +39,10 @@ export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/unsloth_env/lib/
 export TOKENIZERS_PARALLELISM=false
 
 python3 src/finetune_generation.py --task_name $2 --model_name $1
+
+# done
+# sbatch slurm_gen.sh facebook/bart-large paraphrase-type-generation
+#TODO
+# sbatch slurm_gen.sh google/pegasus-xsum paraphrase-type-generation
+# sbatch slurm_gen.sh facebook/bart-large paraphrase-generation
+# sbatch slurm_gen.sh google/pegasus-xsum paraphrase-generation

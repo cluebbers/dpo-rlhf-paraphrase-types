@@ -1,9 +1,10 @@
 #!/bin/sh
-#SBATCH --job-name=paraphrase_type_cls
+#SBATCH --job-name=dpo_paraphrase_type_gen
 #SBATCH --account=luebbers_masters
 #SBATCH --partition=gpu
 #SBATCH -t 12:00:00
 #SBATCH -n 1
+#SBATCH --nodes=1
 #SBATCH --gpus 1
 #SBATCH -c 1
 #SBATCH --mail-type=all              # send mail when job begins and ends
@@ -22,8 +23,7 @@ echo "Working directory: $PWD"
 echo "Current node: ${SLURM_NODELIST}"
 
 echo "Model: $1"
-echo "Task: $2"
-echo "Dataset: $3"
+echo "Adapter: $2"
 
 # For debugging purposes.
 python --version
@@ -38,15 +38,8 @@ export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/unsloth_env/lib/
 
 export TOKENIZERS_PARALLELISM=false
 
-python3 src/finetune_detection.py --model_name $1 --task_name $2 --dataset_name $3
+python3 src/dpo_generation_llama.py --model_name $1 --adapter_dir $2
 
-# done
-# sbatch slurm_cls.sh bert-base-uncased paraphrase-type-detection jpwahle/etpc
-# sbatch slurm_cls.sh microsoft/deberta-base paraphrase-type-detection jpwahle/etpc
-# sbatch slurm_cls.sh FacebookAI/roberta-base paraphrase-type-detection jpwahle/etpc
 #TODO
-# sbatch slurm_cls.sh nghuyong/ernie-2.0-large-en paraphrase-type-detection jpwahle/etpc
-# sbatch slurm_cls.sh bert-base-uncased paraphrase-detection jpwahle/etpc
-# sbatch slurm_cls.sh microsoft/deberta-base paraphrase-detection jpwahle/etpc
-# sbatch slurm_cls.sh FacebookAI/roberta-base paraphrase-detection jpwahle/etpc
-# sbatch slurm_cls.sh nghuyong/ernie-2.0-large-en paraphrase-detection jpwahle/etpc
+# sbatch slurm_gen_dpo.sh meta-llama/Llama-2-7b-hf llama/llama-7b-etpc
+# sbatch slurm_gen_dpo.sh meta-llama/Llama-2-13b-hf llama/llama-13b-etpc

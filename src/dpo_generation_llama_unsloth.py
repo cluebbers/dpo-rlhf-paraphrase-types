@@ -11,16 +11,15 @@ from contextlib import nullcontext
 
 import torch
 from datasets import load_dataset, DatasetDict
-from transformers import TrainingArguments, AutoModelForCausalLM
+from transformers import TrainingArguments
 from peft import PeftModel, PeftConfig
 from trl import DPOTrainer, RichProgressCallback
+from unsloth import FastLanguageModel, PatchDPOTrainer, is_bfloat16_supported
 from distutils.util import strtobool
 
 # Initialize Hugging Face Hub login (if needed)
 from huggingface_hub import login
-with open("/token_file.txt", "r") as token_file:
-    hf_token = token_file.read().strip()
-login(token=hf_token)
+login(new_session=False)
 
 TRL_USE_RICH = strtobool(os.getenv("TRL_USE_RICH", "0"))
 
@@ -57,7 +56,7 @@ def parse_arguments():
 def load_and_prepare_model(model_name, adapter_dir):
     """Load the base model, tokenizer, and apply PEFT adapters."""
     max_seq_length = 2048
-    model, tokenizer = AutoModelForCausalLM.from_pretrained(
+    model, tokenizer = FastLanguageModel.from_pretrained(
         model_name=model_name,
         max_seq_length=max_seq_length,
         dtype=None,
@@ -72,7 +71,7 @@ def load_and_prepare_model(model_name, adapter_dir):
     model.load_adapter(adapter_dir, adapter_name="reference")
     
     # Apply additional LoRA weights
-    model = AutoModelForCausalLM.get_peft_model(model, **vars(peft_config))
+    model = FastLanguageModel.get_peft_model(model, **vars(peft_config))
     
     return model, tokenizer
 
@@ -94,7 +93,8 @@ def setup_trainer(args, model, train_dataset, eval_dataset, tokenizer):
             gradient_accumulation_steps=args.gradient_accumulation_steps,
             warmup_ratio=args.warmup_ratio,
             num_train_epochs=args.num_train_epochs,
-            fp16=True,
+            fp16=not is_bfloat16_supported(),
+            bf16=is_bfloat16_supported(),
             logging_steps=args.logging_steps,
             optim=args.optim,
             seed=args.seed,
@@ -115,6 +115,7 @@ def main():
     output_dir = f"./out/gen-models/dpo_{args.model_name}"
     
     console = initialize_logging()
+    PatchDPOTrainer()  # Patch the DPOTrainer with Unsloth optimizations
     torch.cuda.empty_cache()  # Clear GPU cache before starting
 
     # Load model and tokenizer
