@@ -301,12 +301,12 @@ def main(
     with init_context:
         trainer = setup_trainer(args, model, train_dataset, eval_dataset, tokenizer)
 
-    # print("Training started...")  # Start training
-    # trainer.train()
+    print("Training started...")  # Start training
+    trainer.train()
 
     # # Save the trained model
-    # with save_context:
-    #     trainer.save_model(output_dir)
+    with save_context:
+        trainer.save_model(output_dir)
         
     # Load data and predict
     FastLanguageModel.for_inference(model)
