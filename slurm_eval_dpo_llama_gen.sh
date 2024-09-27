@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --job-name=dpo_llama_gen
+#SBATCH --job-name=eval_dpo_llama_gen
 #SBATCH --account=luebbers_masters
 #SBATCH --partition=gpu
 #SBATCH -t 12:00:00
@@ -35,9 +35,9 @@ echo $PATH
 
 export TOKENIZERS_PARALLELISM=false
 
-python3 src/dpo_llama_generation.py --model_name $1 --adapter_dir $2
+python3 src/eval_generation_llama.py --model_name $1 --adapter_dir $2
 
 #TODO
-# sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-2-7b-hf llama/llama-7b-etpc
-# sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-2-13b-hf llama/llama-13b-etpc
+# sbatch slurm_eval_dpo_llama_gen.sh meta-llama/Llama-2-7b-hf out/dpo_llama-7b_apty
+# sbatch slurm_eval_dpo_llama_gen.sh meta-llama/Llama-2-13b-hf out/dpo_llama-13b_apty
 # #SBATCH --gpus V100:1
