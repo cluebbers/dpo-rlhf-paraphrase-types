@@ -115,11 +115,10 @@ def main(
     max_gen_len: int = 1024,
     max_batch_size: int = 4,
 ):
-    # Mocking environment variables for single-GPU training
-    if torch.cuda.device_count() == 1:
-        os.environ["RANK"] = "0"
-        os.environ["WORLD_SIZE"] = "1"
-        os.environ["LOCAL_RANK"] = "0"
+    # export MASTER_ADDR=localhost
+    # export MASTER_PORT=12355
+    # python3 src/llama_generation.py --ckpt_dir=out/dpo_llama-7b_apty --tokenizer_path=out/dpo_llama-7b_apty --data_file=out/generation_etpc_test.jsonl
+    # python3 src/llama_generation.py --ckpt_dir=src/llama/llama-7b-etpc --tokenizer_path=src/llama --data_file=out/generation_etpc_test.jsonl
         
     model = Llama.build(
         ckpt_dir=ckpt_dir,
