@@ -551,9 +551,13 @@ def main():
     else:
         raise NotImplementedError(f"Task {args.task_name} not implemented.")
 
+    # Replace '/' with '_' to avoid directory creation issues
+    sanitized_dataset_name = args.dataset_name.replace('/', '-')
+    sanitized_model_name = args.model_name.replace('/', '-')
+    
     # Training arguments
     training_args = TrainingArguments(
-        output_dir=f"./out/cls-models/{args.model_name}-{args.dataset_name}-{args.task_name}",
+        output_dir=f"./out/cls-models/{sanitized_model_name}_{sanitized_dataset_name}_{args.task_name}",
         learning_rate=2e-5,
         per_device_train_batch_size=4,
         per_device_eval_batch_size=8,
@@ -595,11 +599,9 @@ def main():
         results = pd.DataFrame(results)
 
     # Store results
-    # Replace '/' with '_' to avoid directory creation issues
-    sanitized_dataset_name = args.dataset_name.replace('/', '_')
-    sanitized_model_name = args.model_name.replace('/', '_')
+    
     results.to_csv(
-        f"./out/{sanitized_model_name}-{sanitized_dataset_name}-paraphrase-{args.task_name}-results.csv",
+        f"./out/{sanitized_model_name}_{sanitized_dataset_name}_{args.task_name}_results.csv",
     )
 
 

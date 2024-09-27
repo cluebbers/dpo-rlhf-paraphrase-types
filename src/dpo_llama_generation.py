@@ -1,7 +1,11 @@
 """
-python src/dpo_generation.py \
+python3 src/dpo_llama_generation.py \
  --model_name=meta-llama/Llama-2-7b-hf \
  --adapter_dir=llama/llama-7b-etpc
+ 
+ python3 src/dpo_llama_generation.py \
+ --model_name=meta-llama/Llama-2-13b-hf \
+ --adapter_dir=llama/llama-13b-etpc
 """
 
 import argparse
@@ -9,17 +13,9 @@ import os
 
 import torch
 from datasets import load_dataset, DatasetDict
-from transformers import TrainingArguments, AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel, PeftConfig, get_peft_model
-from trl.commands.cli_utils import DPOScriptArguments, TrlParser
-from trl import (
-    DPOTrainer, 
-    DPOConfig,
-    ModelConfig,
-    get_peft_config,
-    get_quantization_config,
-    get_kbit_device_map,
-)
+from trl import DPOTrainer, DPOConfig
 
 # Initialize Hugging Face Hub login (if needed)
 from huggingface_hub import login
@@ -60,7 +56,7 @@ def main():
     # Apply additional LoRA weights
     model = get_peft_model(model, peft_config=peft_config)
     
-    # Move model to GPU again after loading PEFT model
+    # Move model to GPU after loading PEFT model
     model = model.to(device)
     
     torch.cuda.empty_cache()  # Clear GPU cache before starting
@@ -102,7 +98,7 @@ def main():
     trainer.train()
 
     # Save the trained model
-    trainer.save_model("./out/gen-models/dpo_{args.model_name}")
+    trainer.save_model("./out/gen-models/dpo_{args.model_name}_{args.adapter_dir}")
 
 if __name__ == "__main__":
     main()

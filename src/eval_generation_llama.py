@@ -11,8 +11,8 @@ from datasets import load_dataset
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
 from rouge import Rouge
 from tqdm import tqdm
-from unsloth import FastLanguageModel
-from peft import PeftModel, PeftConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from peft import PeftModel, PeftConfig, get_peft_model
 import torch
 
 # Install required libraries first
@@ -29,19 +29,21 @@ def load_model_and_tokenizer(model_name_or_path, adapter_dir=None, max_seq_lengt
     Returns:
         tuple: The loaded model and tokenizer.
     """
-    model, tokenizer = FastLanguageModel.from_pretrained(
-        model_name=model_name_or_path,
-        load_in_4bit=True,
-        dtype=torch.float16,
-        max_seq_length =max_seq_length ,
+    
+    quant_config = BitsAndBytesConfig(load_in_8bit=True)
+    
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name_or_path,
+        quantization_config=quant_config
     )
-
+    
+    tokenizer = AutoTokenizer.from_pretrained(model_name_or_path)
+    tokenizer.pad_token = tokenizer.eos_token
     if adapter_dir:
         peft_config = PeftConfig.from_pretrained(adapter_dir)
+        peft_config.base_model_name_or_path = model_name_or_path
         model = PeftModel.from_pretrained(model, adapter_dir)
-        model = FastLanguageModel.get_peft_model(model, **vars(peft_config))
-
-    FastLanguageModel.for_inference(model)
+        model = get_peft_model(model, peft_config=peft_config)
     
     return model, tokenizer
 
@@ -77,7 +79,7 @@ def generate_paraphrases(
         batch = data[i : i + max_batch_size]
         user_messages = [instance["messages"][0]["content"] for instance in batch]
         
-        inputs = tokenizer(user_messages, return_tensors="pt", padding=True, truncation=True).to(device)
+        inputs = tokenizer(user_messages, return_tensors="pt", padding=True, truncation=True, max_length=max_length).to(device)
 
         results = model.generate(
             **inputs,
