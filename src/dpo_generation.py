@@ -10,12 +10,12 @@ from transformers import (
     AutoTokenizer,
     BartForConditionalGeneration,
     PegasusForConditionalGeneration,
-    Trainer,
-    TrainingArguments,
 )
 import pandas as pd
 from sklearn.model_selection import train_test_split
-from trl import DPOTrainer
+from trl import DPOTrainer, DPOConfig
+
+from datasets import Dataset
 
 def encode_data(original, target, tokenizer):
     """
@@ -203,11 +203,7 @@ class ParaphraseTypeDataset(torch.utils.data.Dataset):
                 sentence[index] = f"<type-{type_id}>{sentence[index]}"
         return " ".join(sentence)
 
-from datasets import Dataset
-import pandas as pd
-from sklearn.model_selection import train_test_split
 
-from datasets import Dataset
 
 def load_and_preprocess_apty_dataset(dataset):
     """
@@ -477,7 +473,7 @@ def main():
     train_dataset, eval_dataset = load_datasets(args.task_name, tokenizer, device)
 
     # Set up training arguments  
-    training_args = TrainingArguments(
+    training_args = DPOConfig(
         per_device_train_batch_size=16,  # Increase if GPU memory allows
         gradient_accumulation_steps=2,  # Accumulate gradients if memory is tight
         num_train_epochs=3,
