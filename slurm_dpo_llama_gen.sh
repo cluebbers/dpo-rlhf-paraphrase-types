@@ -34,8 +34,10 @@ echo "Current environment: $(which python)"
 echo $PATH
 
 export TOKENIZERS_PARALLELISM=false
+# Set PYTHONPATH to point to the correct site-packages directory
+export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/dpo_env/lib/python3.10/site-packages:$PYTHONPATH
 
-python3 src/dpo_llama_generation.py --model_name $1 --adapter_dir $2
+python3 src/dpo_llama_gen_debug.py --model_name $1 --adapter_dir $2
 
 #TODO
 # sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-2-7b-hf llama/llama-7b-etpc
