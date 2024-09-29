@@ -5,7 +5,7 @@ import logging
 from tqdm import tqdm
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
 from rouge import Rouge
-
+from typing import List, Optional
 import torch
 from datasets import load_dataset, DatasetDict
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
@@ -35,6 +35,7 @@ def load_data(filename):
         data = [json.loads(line) for line in f.readlines()]
     logging.info(f"Loaded {len(data)} records from {filename}")
     return data
+
 def text_completion(
     model,
     tokenizer,
@@ -165,7 +166,7 @@ def main(
     top_p: float = 0.9,
     max_seq_len: int = 2048,
     max_gen_len: int = 1024,
-    max_batch_size: int = 4,
+    max_batch_size: int = 8,
 ):    
     logging.basicConfig(
     filename='slurm_files/my_app.log',  # Specify the log file
@@ -179,9 +180,14 @@ def main(
     logging.info(f"Loading model and tokenizer: {args.model_name}")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     logging.info(f"Using device: {device}")
+    
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.float16,
+        )    
    
     logging.info("Loading the model...")
-    model = AutoModelForCausalLM.from_pretrained(args.model_name)
+    model = AutoModelForCausalLM.from_pretrained(args.model_name, quantization_config=bnb_config)
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
     tokenizer.pad_token = tokenizer.eos_token
     
@@ -189,17 +195,16 @@ def main(
     script_dir = os.path.dirname(os.path.abspath(__file__))
     adapter_dir = os.path.join(script_dir, args.adapter_dir)
     
-    peft_config = PeftConfig.from_pretrained(adapter_dir, base_model_name_or_path=args.model_name)
+    peft_config = PeftConfig.from_pretrained(adapter_dir)
+    peft_config.base_model_name_or_path=args.model_name
     model = PeftModel.from_pretrained(model, adapter_dir, config=peft_config)
     
     logging.info("Loading reference adapter for DPO...")
     model.load_adapter(adapter_dir, adapter_name="reference")
     
-    logging.info("Applying LoRA weights...")
-    model = get_peft_model(model, peft_config=peft_config)
-    
-    model = model.to(device)
     logging.info("Model moved to GPU")
+    model = model.to(device)
+    model.train()    
     
     torch.cuda.empty_cache()  # Clear GPU cache
     
@@ -224,8 +229,8 @@ def main(
     logging.info("Setting up the DPO trainer...")
     training_args = DPOConfig(
         output_dir=f"./out/gen-models/dpo_{args.model_name}_{args.adapter_dir}",
-        per_device_train_batch_size=1,
-        gradient_accumulation_steps=1,
+        per_device_train_batch_size=8,
+        gradient_accumulation_steps=4,
         max_length=1024,
         max_prompt_length=512,
         fp16=True,
@@ -238,10 +243,9 @@ def main(
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
-        peft_config=peft_config,
     )
     
-    logging.info("Starting training...")
+    logging.info("Starting training...")    
     trainer.train()
 
     logging.info("Training completed. Saving the model...")
@@ -252,9 +256,11 @@ def main(
     test_data = load_data(data_file)
 
     logging.info("Generating paraphrases...")
+    model.eval()
     generated_paraphrases = generate_paraphrases(
         test_data,
         model,
+        tokenizer=tokenizer,
         max_gen_len=max_gen_len,
         temperature=temperature,
         top_p=top_p,

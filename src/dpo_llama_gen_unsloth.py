@@ -23,8 +23,6 @@ from trl import DPOTrainer, RichProgressCallback
 from unsloth import FastLanguageModel, PatchDPOTrainer, is_bfloat16_supported
 from distutils.util import strtobool
 
-from llama.tokenizer import Tokenizer
-
 # Initialize Hugging Face Hub login (if needed)
 from huggingface_hub import login
 login(new_session=False)

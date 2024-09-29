@@ -60,12 +60,29 @@ def modify_last_character(text: str) -> str:
     return text
 
 def write_to_jsonl(data, filename):
+    # Full list of paraphrase types
+    all_paraphrase_types = [
+        "Derivational Changes", "Inflectional Changes", "Modal Verb Changes", 
+        "Spelling changes", "Change of format", "Same Polarity Substitution (contextual)", 
+        "Same Polarity Substitution (habitual)", "Same Polarity Substitution (named ent.)", 
+        "Converse substitution", "Opposite polarity substitution (contextual)", 
+        "Opposite polarity substitution (habitual)", "Synthetic/analytic substitution", 
+        "Coordination changes", "Diathesis alternation", "Ellipsis", "Negation switching", 
+        "Subordination and nesting changes", "Direct/indirect style alternations", 
+        "Punctuation changes", "Syntax/discourse structure changes", "Entailment", 
+        "Identity", "Non-paraphrase", "Addition/Deletion", "Change of order", "Semantic-based"
+    ]
+    
     with open(filename, "w", encoding="utf-8") as file:
         for instance in tqdm(data):
             # Check if there are any paraphrase types in instance["APT"]
             # otherwise skip
             if not instance["APT"]:
                 continue
+            
+            # Find rejected paraphrase types by excluding the ones present in instance["APT"]
+            rejected_paraphrase_types = [ptype for ptype in all_paraphrase_types if ptype not in instance["APT"]]
+
 
             # Construct detection entry
             detection_entry = {
@@ -92,7 +109,7 @@ def write_to_jsonl(data, filename):
                             " Semantic-based"
                         ),
                         "chosen": f" {instance['APT']}",
-                        "rejected": f"{instance['rejected']}",
+                        "rejected": f"{', '.join(rejected_paraphrase_types)}",
                     },
 
             # Construct generation entry
