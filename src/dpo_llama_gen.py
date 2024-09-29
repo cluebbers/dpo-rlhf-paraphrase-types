@@ -93,7 +93,7 @@ def text_completion(
         do_sample=True,
     )
 
-    return [{"generation": tokenizer.decode(g)} for g in generation_tokens]
+    return [{"generation": tokenizer.decode(g, skip_special_tokens=True)} for g in generation_tokens]
 
 def generate_paraphrases(
     data, model, tokenizer, max_gen_len, temperature, top_p, max_batch_size, num_examples
@@ -188,7 +188,7 @@ def main(
    
     logging.info("Loading the model...")
     model = AutoModelForCausalLM.from_pretrained(args.model_name, quantization_config=bnb_config)
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name, padding_side="left")
     tokenizer.pad_token = tokenizer.eos_token
     
     logging.info(f"Loading PEFT adapter from {args.adapter_dir}")
