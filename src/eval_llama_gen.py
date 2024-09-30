@@ -61,46 +61,112 @@ def read_sentences_from_files(data_dir):
 
 
 def load_model_and_tokenizer(model_name, adapter_dir=None):
-    """Load a model and tokenizer, applying PEFT adapters if specified."""
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    bnb_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16)
+    """Load a model and tokenizer, applying PEFT adapters if specified, and ensure padding configuration."""
+    logging.info(f"Loading model and tokenizer: {model_name}")
+    
+    # Configure for bitsandbytes (4-bit quantization) and use bfloat16
+    bnb_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16)
 
-    model = AutoModelForCausalLM.from_pretrained(model_name, quantization_config=bnb_config)
-    tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left")
-    tokenizer.pad_token = tokenizer.eos_token
+    # Load the base model with bfloat16 precision for better stability
+    model = AutoModelForCausalLM.from_pretrained(model_name, quantization_config=bnb_config, torch_dtype=torch.bfloat16)
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
 
+    # Ensure left-padding is used and add a padding token if missing
+    tokenizer.padding_side = "left"
+
+    # Add a padding token if it's missing and resize embeddings
+    if tokenizer.pad_token is None:
+        logging.info("Adding a padding token ('<pad>') to the tokenizer.")
+        tokenizer.add_special_tokens({"pad_token": "<pad>"})
+        model.resize_token_embeddings(len(tokenizer))
+
+    # Set the model's padding token ID to the new padding token
+    model.config.pad_token_id = tokenizer.pad_token_id
+
+    # Load the adapter if specified
     if adapter_dir:
+        logging.info(f"Loading PEFT adapter from {adapter_dir}")
         peft_config = PeftConfig.from_pretrained(adapter_dir)
         model = PeftModel.from_pretrained(model, adapter_dir, config=peft_config)
 
-    model = model.to(device)
     model.eval()
     torch.cuda.empty_cache()
     
     return model, tokenizer
 
+from tqdm import tqdm  # Import the tqdm library for the progress bar
 
-def generate_paraphrases(model, tokenizer, data, dataset_type="apty", paraphrase_type=None, max_gen_len=1024, temperature=0.6, top_p=0.9, batch_size=8):
-    """Generate paraphrases for a list of sentences or prompts using the provided model and tokenizer."""
-    paraphrases = []
-    device = next(model.parameters()).device
+def generate_paraphrases(
+    model, 
+    tokenizer, 
+    data, 
+    dataset_type="apty", 
+    paraphrase_type=None, 
+    temperature=0.6,  
+    top_p=0.9,        
+    batch_size=1,     
+    max_length=512,   
+    max_new_tokens=50 
+):
+    """
+    Generate paraphrases for a list of sentences or prompts using the provided model and tokenizer.
+    This version includes a progress bar and slices the output to remove the input prompt from the final paraphrase.
+    """
+    paraphrases = []  # List to store generated paraphrases
+    device = next(model.parameters()).device  # Ensure model is on the correct device (e.g., CUDA)
+
+    # Use tqdm to show progress during generation
+    total_batches = (len(data) + batch_size - 1) // batch_size  # Calculate total number of batches
+    progress_bar = tqdm(total=total_batches, desc="Generating Paraphrases", unit="batch")
 
     for i in range(0, len(data), batch_size):
-        batch = data[i:i + batch_size]
+        batch = data[i:i + batch_size]  # Slice the data into batches
+
+        # Construct prompts based on dataset type
         if dataset_type == "apty":
-            prompts = [f"Instruction: Given the following sentence, generate a paraphrase with the following type. Sentence: {sentence} Paraphrase Type: {paraphrase_type}. Generated Paraphrase: " for sentence in batch]
+            prompts = [
+                f"Instruction: Given the following sentence, generate a paraphrase with the following type. "
+                f"Sentence: {sentence} Paraphrase Type: {paraphrase_type}. Generated Paraphrase: "
+                for sentence in batch
+            ]
         elif dataset_type == "etpc":
             prompts = [instance["messages"][0]["content"] for instance in batch]
 
-        inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True).to(device)
+        # Tokenize inputs in batches with padding and truncation
+        inputs = tokenizer(
+            prompts, 
+            return_tensors="pt",  # Return as PyTorch tensors
+            padding=True,         # Pad shorter sequences
+            truncation=True,      # Truncate longer sequences
+            max_length=max_length # Maximum input length
+        ).to(device)  # Move tokenized inputs to the correct device (GPU or CPU)
+
+        # Store the length of the input tokens (prompt)
+        input_token_len = inputs["input_ids"].shape[-1]
 
         with torch.no_grad():
-            outputs = model.generate(**inputs, max_new_tokens=max_gen_len, top_p=top_p, temperature=temperature)
+            # Generate paraphrases in batches
+            outputs = model.generate(
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs["attention_mask"],  # Pass the attention mask to handle padding
+                max_new_tokens=max_new_tokens,  # Limit the number of new tokens generated
+                top_p=top_p,                    # Top-p nucleus sampling
+                temperature=temperature,        # Sampling temperature
+                do_sample=True                  # Enable sampling (for stochastic generation)
+            )
 
-        paraphrases.extend([tokenizer.decode(output, skip_special_tokens=True).strip() for output in outputs])
+        # For each output, slice off the input prompt tokens and decode only the new generated tokens
+        for output in outputs:
+            generated_tokens = output[input_token_len:]  # Slice off the input prompt tokens
+            paraphrase = tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
+            paraphrases.append(paraphrase)
+
+        # Update progress bar after processing each batch
+        progress_bar.update(1)
+
+    progress_bar.close()  # Close the progress bar after the loop
 
     return paraphrases
-
 
 def evaluate_paraphrases(paraphrases, references):
     """Evaluate paraphrases using ROUGE and BLEU scores."""
@@ -121,7 +187,6 @@ def evaluate_paraphrases(paraphrases, references):
         "BLEU": avg_bleu,
     }
 
-
 def save_metrics_to_csv(metrics, output_csv):
     """Save evaluation metrics to a CSV file."""
     fieldnames = ["Model", "Adapter", "ROUGE-1", "ROUGE-2", "ROUGE-L", "BLEU"]
@@ -141,38 +206,68 @@ def save_paraphrases_to_json(paraphrases, output_file):
     logging.info(f"Paraphrases saved to {output_file}")
 
 
-def process_model_generation(model_name_or_path, adapter_path, apty_data, etpc_data, model_suffix):
+def process_model_generation(model_name_or_path, adapter_path, apty_data, etpc_data, model_suffix, batch_size):
     """Generate paraphrases for both ETPC and APTY datasets using a specified model and adapter."""
     model, tokenizer = load_model_and_tokenizer(model_name_or_path, adapter_path)
     all_paraphrases = []
 
     # Generate paraphrases for APTY dataset
     for paraphrase_type, sentences in apty_data.items():
-        paraphrases = generate_paraphrases(model, tokenizer, sentences, "apty", paraphrase_type)
-        all_paraphrases.extend([{"Original": sentence, "APT": paraphrase_type, "Paraphrase": paraphrase, "Kind": model_suffix} for sentence, paraphrase in zip(sentences, paraphrases)])
+        paraphrases = generate_paraphrases(model, tokenizer, sentences, "apty", paraphrase_type, batch_size=batch_size)
+        all_paraphrases.extend([{
+            "Original": sentence,  # Only store the sentence
+            "APT": paraphrase_type, 
+            "Paraphrase": paraphrase, 
+            "Kind": model_suffix,  # Indicate the model type (base, etpc, dpo)
+            "Dataset": "APTY"      # Identify the dataset source
+        } for sentence, paraphrase in zip(sentences, paraphrases)])
 
     # Generate paraphrases for ETPC dataset
-    etpc_paraphrases = generate_paraphrases(model, tokenizer, etpc_data, "etpc")
-    all_paraphrases.extend([{"Original": etpc_data[index]["messages"][0]["content"], "APT": "ETPC", "Paraphrase": paraphrase, "Kind": model_suffix} for index, paraphrase in enumerate(etpc_paraphrases)])
+    etpc_paraphrases = generate_paraphrases(model, tokenizer, etpc_data, "etpc", batch_size=batch_size)
+    for index, paraphrase in enumerate(etpc_paraphrases):
+        # Extract only the sentence part from the ETPC message content
+        full_content = etpc_data[index]["messages"][0]["content"]
+
+        # Safely extract the sentence and paraphrase types from the ETPC content
+        if "Sentence:" in full_content and "Paraphrase Types:" in full_content:
+            original_sentence = full_content.split("Sentence:")[1].split("Paraphrase Types:")[0].strip()
+            paraphrase_types = full_content.split("Paraphrase Types:")[1].strip()  # Get everything after "Paraphrase Types:"
+        else:
+            # Fallback if format is unexpected
+            original_sentence = full_content
+            paraphrase_types = "Unknown"  # Use a default value if not found
+
+        all_paraphrases.append({
+            "Original": original_sentence,  # Store only the extracted sentence
+            "APT": paraphrase_types,        # Store the extracted paraphrase types (APT)
+            "Paraphrase": paraphrase,
+            "Kind": model_suffix,           # Indicate the model type (base, etpc, dpo)
+            "Dataset": "ETPC"               # Identify the dataset source (ETPC in this case)
+        })
 
     del model, tokenizer
     torch.cuda.empty_cache()
 
     return all_paraphrases
 
-
-def generate_and_evaluate(models, apty_data, etpc_data, num_examples, output_csv, output_json):
+def generate_and_evaluate(models, apty_data, etpc_data, output_csv, output_json, batch_size):
     """Main function to generate paraphrases for different models and evaluate them."""
     metrics = []
     all_paraphrases = []
-    references = [item["messages"][0]["content"] for item in etpc_data]
+    references = [item["messages"][0]["content"] for item in etpc_data]  # References for ETPC dataset
 
     for model_name, adapter, model_suffix in models:
         logging.info(f"Generating paraphrases for {model_suffix} model")
-        paraphrases = process_model_generation(model_name, adapter, apty_data, etpc_data, model_suffix)
+        paraphrases = process_model_generation(model_name, adapter, apty_data, etpc_data, model_suffix, batch_size)
         all_paraphrases.extend(paraphrases)
 
-        generated = [entry["Paraphrase"] for entry in paraphrases if entry["APT"] == "ETPC"]
+        # Filter ETPC-generated paraphrases using 'Dataset' field
+        generated = [entry["Paraphrase"] for entry in paraphrases if entry["Dataset"] == "ETPC"]
+
+        # Debug: Log lengths of generated paraphrases and references to check for mismatches
+        logging.info(f"Generated ETPC paraphrases: {len(generated)}, References: {len(references)}")
+
+        # Evaluate the paraphrases using ROUGE and BLEU
         scores = evaluate_paraphrases(generated, references)
         metrics.append({"Model": model_name, "Adapter": model_suffix, **scores})
 
@@ -183,11 +278,19 @@ def generate_and_evaluate(models, apty_data, etpc_data, num_examples, output_csv
 def main():
     args = parse_arguments()
 
-    # Configuration and loading datasets
-    num_examples = 100  # Control how much of the ETPC dataset is used
+    # Set batch size and number of examples
+    batch_size = 8  
+    num_examples = 16  
+
+    # Ensure that num_examples is divisible by batch_size
+    if num_examples % batch_size != 0:
+        raise ValueError(f"num_examples ({num_examples}) must be divisible by batch_size ({batch_size})")
+
+    # Define output files
     output_csv = f"out/eval_{args.model_name.split('/')[-1]}.csv"
     output_json = f"out/generated_paraphrases_{args.model_name.split('/')[-1]}.json"
     
+    # Load datasets, limiting ETPC data to num_examples
     apty_data = read_sentences_from_files("src/basesentences")
     etpc_data = load_data("out/generation_etpc_test.jsonl", num_examples=num_examples)
 
@@ -199,7 +302,7 @@ def main():
     ]
 
     # Generate paraphrases and evaluate models
-    generate_and_evaluate(models, apty_data, etpc_data, num_examples, output_csv, output_json)
+    generate_and_evaluate(models, apty_data, etpc_data, output_csv, output_json, batch_size)
 
 
 if __name__ == "__main__":
