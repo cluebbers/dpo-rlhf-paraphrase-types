@@ -271,108 +271,125 @@ def save_metrics_to_csv(metrics, output_csv):
     
 def save_paraphrases_to_json(paraphrases, output_file):
     """
-    Saves the generated paraphrases to a JSON file.
+    Saves the generated paraphrases to a JSON file in a human-readable format.
 
     Args:
         paraphrases (list): List of dictionaries containing the generated paraphrases.
         output_file (str): Path to the output JSON file.
     """
-    with open(output_file, 'w', encoding='utf-8', buffering=1024*1024) as file:
-        # Use json.dump to write the list of dictionaries to the JSON file
-        # Set ensure_ascii=False to preserve non-ASCII characters
-        # Set separators=(',', ':') to reduce whitespace
-        json.dump(paraphrases, file, ensure_ascii=False, separators=(',', ':'))
+    with open(output_file, 'w', encoding='utf-8') as file:
+        # Use json.dump with ensure_ascii=False to allow non-ASCII characters,
+        # and indent=4 for pretty-printing
+        json.dump(paraphrases, file, ensure_ascii=False, indent=4)
     logging.info(f"Paraphrases saved to {output_file}")
     
+# Track loaded adapters globally
+loaded_adapters = set()
+
 def process_model_generation(
-    model_name_or_path: str,
-    adapter_path: str,
-    apty_data: Dict[str, List[str]],
-    etpc_data: List[Dict[str, Any]],
-    model_suffix: str,
+    model: PreTrainedModel, 
+    tokenizer: PreTrainedTokenizerBase, 
+    apty_data: Dict[str, List[str]], 
+    etpc_data: List[Dict[str, Any]], 
+    adapter_dir: Optional[str], 
+    model_suffix: str, 
     batch_size: int
 ) -> List[Dict[str, str]]:
     """
-    Generate paraphrases for both ETPC and APTY datasets using a specified model and adapter.
+    Generate paraphrases for both ETPC and APTY datasets using the provided model and adapter.
+
+    Args:
+        model (PreTrainedModel): Loaded base model.
+        tokenizer (PreTrainedTokenizerBase): Loaded tokenizer.
+        apty_data (Dict[str, List[str]]): Dictionary of paraphrase types and sentences for APTY dataset.
+        etpc_data (List[Dict[str, Any]]): List of entries to generate paraphrases for ETPC dataset.
+        adapter_dir (str): Path to the PEFT adapter to apply.
+        model_suffix (str): Suffix to use for identifying the model type (base, etpc, dpo).
+        batch_size (int): Batch size to use for generation.
+
+    Returns:
+        List[Dict[str, str]]: List of dictionaries containing generated paraphrases.
     """
-
-    logging.info(f"Processing model: {model_name_or_path} with suffix: {model_suffix}")
     
-    # Extract and flatten sentences from APTY data
-    apty_sentences = [sentence for sublist in apty_data.values() for sentence in sublist]
-    etpc_sentences = [entry["messages"][0]["content"] for entry in etpc_data]
+    adapter_name = os.path.basename(adapter_dir) if adapter_dir else "base"
 
-    # Combine APTY and ETPC sentences
-    all_sentences = apty_sentences + etpc_sentences
-
-    logging.info(f"Total sentences for generation: {len(all_sentences)}")
-
-    # Load model and tokenizer
-    model, tokenizer = load_model_and_tokenizer(model_name_or_path, adapter_path)
-
-    # Generate paraphrases in batches
-    paraphrases = []
-    for i in range(0, len(all_sentences), batch_size):
-        batch = all_sentences[i:i + batch_size]
-        results = generate_paraphrases(model, tokenizer, batch, dataset_type="apty", batch_size=batch_size)
-        paraphrases.extend(results)
-
-    logging.info(f"Total paraphrases generated for model {model_suffix}: {len(paraphrases)}")
+    # Check if the adapter is already loaded
+    if adapter_name not in loaded_adapters:
+        if adapter_dir:
+            try:
+                # Load and set the adapter
+                logging.info(f"Loading PEFT adapter from {adapter_dir}")
+                model.load_adapter(adapter_dir, adapter_name=adapter_name)
+                model.set_adapter(adapter_name)
+                loaded_adapters.add(adapter_name)
+                logging.info(f"Adapter '{adapter_name}' activated successfully.")
+            except Exception as e:
+                logging.error(f"Failed to load or activate adapter: {e}")
+                raise
+        else:
+            logging.info("No adapter specified. Using base model.")
+    else:
+        # Set the adapter if it's already loaded
+        model.set_adapter(adapter_name)
+        logging.info(f"Using already loaded adapter: {adapter_name}")
 
     all_paraphrases = []
-    for index, paraphrase in enumerate(paraphrases):
-        if index < len(apty_sentences):
-            # Handle APTY dataset
-            sentence = apty_sentences[index]
-            all_paraphrases.append({
-                "Original": sentence,
-                "APT": "Unknown",  
-                "Paraphrase": paraphrase, 
-                "Kind": model_suffix,  
-                "Dataset": "APTY"  
-            })
+
+    # Generate paraphrases for APTY dataset
+    for paraphrase_type, sentences in apty_data.items():
+        paraphrases = generate_paraphrases(model, tokenizer, sentences, "apty", paraphrase_type, batch_size=batch_size)
+        all_paraphrases.extend([{
+            "Original": sentence,
+            "APT": paraphrase_type,
+            "Paraphrase": paraphrase,
+            "Kind": model_suffix,
+            "Dataset": "APTY"
+        } for sentence, paraphrase in zip(sentences, paraphrases)])
+
+    # Generate paraphrases for ETPC dataset
+    etpc_paraphrases = generate_paraphrases(model, tokenizer, etpc_data, "etpc", batch_size=batch_size)
+    for index, paraphrase in enumerate(etpc_paraphrases):
+        full_content = etpc_data[index]["messages"][0]["content"]
+
+        # Safely extract the sentence and paraphrase types from the ETPC content
+        if "Sentence:" in full_content and "Paraphrase Types:" in full_content:
+            original_sentence = full_content.split("Sentence:")[1].split("Paraphrase Types:")[0].strip()
+            paraphrase_types = full_content.split("Paraphrase Types:")[1].strip()
         else:
-            # Handle ETPC dataset
-            full_content = etpc_data[index - len(apty_sentences)]["messages"][0]["content"]
+            original_sentence = full_content
+            paraphrase_types = "Unknown"
 
-            # Extract sentence and paraphrase types from ETPC content
-            if "Sentence:" in full_content and "Paraphrase Types:" in full_content:
-                original_sentence = full_content.split("Sentence:")[1].split("Paraphrase Types:")[0].strip()
-                paraphrase_types = full_content.split("Paraphrase Types:")[1].strip()
-            else:
-                original_sentence = full_content
-                paraphrase_types = "Unknown"
+        all_paraphrases.append({
+            "Original": original_sentence,
+            "APT": paraphrase_types,
+            "Paraphrase": paraphrase,
+            "Kind": model_suffix,
+            "Dataset": "ETPC"
+        })
 
-            all_paraphrases.append({
-                "Original": original_sentence,
-                "APT": paraphrase_types,
-                "Paraphrase": paraphrase,
-                "Kind": model_suffix,
-                "Dataset": "ETPC"
-            })
-
-    del model, tokenizer
-    torch.cuda.empty_cache()
-
-    logging.info(f"Processed model {model_suffix}: {len(all_paraphrases)} entries")
-    
     return all_paraphrases
 
-def generate_and_evaluate(models, apty_data, etpc_data, output_csv, output_json, batch_size):
+def generate_and_evaluate(base_model, tokenizer, models, apty_data, etpc_data, output_csv, output_json, batch_size):
     """
     Main function to generate paraphrases for different models and evaluate them.
     """
     metrics = []
     all_paraphrases = []
-    references = [item["messages"][0]["content"] for item in etpc_data]
+    references = [item["messages"][0]["content"] for item in etpc_data]  # References for ETPC dataset
 
-    for model_name, adapter, model_suffix in models:
+    for model_name, adapter_dir, model_suffix in models:
         logging.info(f"Starting generation for model: {model_suffix}")
-        paraphrases = process_model_generation(model_name, adapter, apty_data, etpc_data, model_suffix, batch_size)
+        
+        # Extract the adapter name from the adapter_dir (e.g., 'llama-7b-etpc')
+        adapter_name = os.path.basename(adapter_dir) if adapter_dir else "base"
+
+        paraphrases = process_model_generation(base_model, tokenizer, apty_data, etpc_data, adapter_dir, model_suffix, batch_size)
         all_paraphrases.extend(paraphrases)
 
+        # Filter ETPC-generated paraphrases
         generated = [entry["Paraphrase"] for entry in paraphrases if entry["Dataset"] == "ETPC"]
-        
+
+        # Log and skip empty paraphrases
         for gen, ref in zip(generated, references):
             if not gen.strip():
                 logging.warning(f"Empty paraphrase for reference: {ref}")
@@ -381,10 +398,18 @@ def generate_and_evaluate(models, apty_data, etpc_data, output_csv, output_json,
             logging.warning(f"No paraphrases generated for model {model_suffix}")
             continue
 
+        # Evaluate the paraphrases using ROUGE and BLEU
         scores = evaluate_paraphrases(generated, references)
         logging.info(f"Scores for {model_suffix}: {scores}")
-        metrics.append({"Model": model_name, "Adapter": model_suffix, **scores})
 
+        # Append the correct model and adapter names to the metrics
+        metrics.append({
+            "Model": model_name,  # Use the actual model name
+            "Adapter": adapter_name,  # Use the extracted adapter name or 'base'
+            **scores
+        })
+
+    # Save the results
     save_paraphrases_to_json(all_paraphrases, output_json)
     save_metrics_to_csv(metrics, output_csv)
 
@@ -410,15 +435,20 @@ def main():
     apty_data = read_sentences_from_files("src/basesentences")
     etpc_data = load_data("out/generation_etpc_test.jsonl", num_examples=num_examples)
 
+    # Load base model and tokenizer once
+    base_model, tokenizer = load_model_and_tokenizer(args.model_name)
+
     # List of models to process: base, ETPC adapter, DPO adapter
     models = [
-        (args.model_name, None, "base_model"),  # Base model
+        (args.model_name, None, "base_model"),           # Base model (no adapter)
         (args.model_name, args.etpc_dir, "etpc_model"),  # ETPC adapter
-        (args.model_name, args.dpo_dir, "dpo_model")  # DPO adapter
+        (args.model_name, args.dpo_dir, "dpo_model"),    # DPO adapter        
     ]
 
+
     # Generate paraphrases and evaluate models
-    generate_and_evaluate(models, apty_data, etpc_data, output_csv, output_json, batch_size)
+    generate_and_evaluate(base_model, tokenizer, models, apty_data, etpc_data, output_csv, output_json, batch_size)
 
 if __name__ == "__main__":
     main()
+
