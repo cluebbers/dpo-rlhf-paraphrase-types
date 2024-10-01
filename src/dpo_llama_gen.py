@@ -1,7 +1,7 @@
 import argparse
-import os
 import logging
 import torch
+
 from datasets import load_dataset, DatasetDict
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 from peft import PeftModel, PeftConfig
@@ -13,13 +13,13 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # Global Constants
 DEFAULT_OUTPUT_DIR = "./out/gen-models"
-DEFAULT_LOG_DIR = "slurm_files/my_app.log"
 
 def parse_arguments():
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description="Run DPO training")
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-2-7b-hf", help="Path to the model")
-    parser.add_argument("--adapter_dir", type=str, default="llama/llama-7b-etpc", help="Directory of the PEFT adapter")
+    parser.add_argument("--adapter_dir", type=str, default="out/gen-models/llama-7b-etpc", help="Name of the PEFT adapter")
+    parser.add_argument("--loss_type", type=str, default="sigmoid", help="Loss type")
     return parser.parse_args()
 
 def login_to_huggingface(token_path="token_file.txt"):
@@ -43,13 +43,12 @@ def load_model_and_tokenizer(model_name, adapter_dir, device):
     
     # Load and attach PEFT adapter
     logging.info(f"Loading PEFT adapter from {adapter_dir}")
-    adapter_dir_abs = os.path.join(os.path.dirname(os.path.abspath(__file__)), adapter_dir)
-    peft_config = PeftConfig.from_pretrained(adapter_dir_abs)
+    peft_config = PeftConfig.from_pretrained(adapter_dir)
     peft_config.base_model_name_or_path = model_name
-    model = PeftModel.from_pretrained(model, adapter_dir_abs, config=peft_config)
+    model = PeftModel.from_pretrained(model, adapter_dir, config=peft_config)
 
     # Load the reference adapter
-    model.load_adapter(adapter_dir_abs, adapter_name="reference")
+    model.load_adapter(adapter_dir, adapter_name="reference")
 
     model.to(device)
     model.train()
@@ -68,7 +67,7 @@ def load_datasets(train_file, eval_file):
     
     return DatasetDict({'train': train_dataset, 'validation': validation_dataset})
 
-def setup_dpo_trainer(model, tokenizer, train_dataset, eval_dataset, output_dir):
+def setup_dpo_trainer(model, tokenizer, train_dataset, eval_dataset, output_dir, loss_type):
     """Setup the DPO trainer."""
     logging.info("Setting up the DPO trainer...")
     training_args = DPOConfig(
@@ -79,7 +78,8 @@ def setup_dpo_trainer(model, tokenizer, train_dataset, eval_dataset, output_dir)
         max_prompt_length=512,
         fp16=True,
         optim="adamw_8bit",
-        remove_unused_columns=False  # Explicitly set this to avoid the warning
+        remove_unused_columns=False,  # Explicitly set this to avoid the warning
+        loss_type=loss_type,
     )
     
     return DPOTrainer(
@@ -90,12 +90,14 @@ def setup_dpo_trainer(model, tokenizer, train_dataset, eval_dataset, output_dir)
         tokenizer=tokenizer,
     )
 
-
 def main():
     """Main function to run the DPO training process."""
     # Parse command-line arguments
     args = parse_arguments()
-    output_dir = f"{DEFAULT_OUTPUT_DIR}/dpo_{args.model_name}_{args.adapter_dir}"
+    
+    sanitized_model_name = args.model_name.replace('/', '-')
+    
+    output_dir = f"{DEFAULT_OUTPUT_DIR}/dpo_{sanitized_model_name}_{args.loss_type}"
 
     # Login to Hugging Face Hub
     login_to_huggingface()
@@ -115,7 +117,7 @@ def main():
     eval_dataset = datasets['validation']
 
     # Setup DPO trainer
-    trainer = setup_dpo_trainer(model, tokenizer, train_dataset, eval_dataset, output_dir)
+    trainer = setup_dpo_trainer(model, tokenizer, train_dataset, eval_dataset, output_dir, args.loss_type)
 
     # Train the model
     logging.info("Starting DPO training...")
