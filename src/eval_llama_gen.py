@@ -5,7 +5,7 @@ import logging
 from typing import Dict, List, Optional, Any
 import torch
 import chardet
-import csv
+
 from tqdm import tqdm
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
 from rouge import Rouge
@@ -16,7 +16,6 @@ import pandas as pd
 # Initialize Hugging Face Hub login (if needed)
 from huggingface_hub import login
 
-from llama.model import Transformer
 with open("token_file.txt", "r") as token_file:
     hf_token = token_file.read().strip()
 login(token=hf_token)
