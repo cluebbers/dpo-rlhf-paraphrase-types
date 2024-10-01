@@ -410,9 +410,9 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
     
     # Prepare evaluation datasets (ETPC and QQP)
-    etpc_dataset = load_dataset("jpwahle/etpc", split="train").filter(lambda x: x["etpc_label"] == 1)
-    etpc_dataset = etpc_dataset["train"].train_test_split(test_size=0.05)  # Split for evaluation
-    qqp_dataset = load_dataset("glue", "qqp", split="validation")
+    etpc_dataset = load_dataset("jpwahle/etpc").filter(lambda x: x["etpc_label"] == 1)
+    etpc_dataset = etpc_dataset["train"].train_test_split(test_size=0.2)  # Split for evaluation
+    qqp_dataset = load_dataset("glue", "qqp")["validation"]
     
     eval_datasets = {
         "ETPC": ParaphraseTypeDataset(etpc_dataset["test"], tokenizer),  # Use test split for evaluation
