@@ -1,15 +1,21 @@
+'''
+python3 src/eval_dpo_gen.py \
+    --model_name=facebook/bart-large \
+    --etpc_dir=out/gen-models/facebook/bart-large_paraphrase-type-generation \
+    --dpo_dir=out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid \
+    --ipo_dir=out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo
+'''
 import os
 import torch
 import argparse
+
+import pandas as pd
+
 from tqdm import tqdm
-
-
 from datasets import load_dataset
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
-from typing import Dict, List, Optional, Any
 from rouge import Rouge
 from transformers import AutoTokenizer, BartForConditionalGeneration
-
 from parascore import ParaScorer 
 
 class ParaphraseDataset(torch.utils.data.Dataset):
@@ -60,7 +66,6 @@ class ParaphraseDataset(torch.utils.data.Dataset):
             "attention_mask": input_data["attention_mask"].squeeze(0),
             "labels": label_data["input_ids"].squeeze(0),
         }
-
 
 class ParaphraseTypeDataset(torch.utils.data.Dataset):
     """A dataset class for paraphrase type generation.
@@ -303,43 +308,117 @@ def parse_args():
     parser.add_argument("--ipo_dir", type=str, default="out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo", help="DPO adapter directory.")
     return parser.parse_args()
 
+def save_metrics_to_csv(metrics, output_csv):
+    """
+    Save evaluation metrics to a CSV file.
+
+    Args:
+        metrics (list): List of dictionaries containing evaluation metrics.
+        output_csv (str): Path to the output CSV file.
+    """
+    fieldnames = ["Model", "Adapter", "dataset_name", "rouge-1", "rouge-2", "rouge-l", "bleu", "free_score", "base_score"]
+
+    # Use pandas to write the CSV file
+    pd.DataFrame(metrics).to_csv(output_csv, index=False, header=fieldnames)
+    
+def evaluate_models(models, eval_datasets, output_csv):
+    """
+    Loop over models and adapters, perform evaluation, and save metrics to CSV.
+    
+    Args:
+        models (list): List of tuples containing model name, adapter directory, and model type.
+        eval_datasets (dict): Dictionary of datasets to evaluate on.
+        output_csv (str): Output CSV file path.
+    """
+    metrics = []
+
+    for model_name, adapter_dir, model_type in models:
+        # Load tokenizer
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        
+        # Find the checkpoint directory if adapter_dir is provided
+        if adapter_dir:
+            checkpoint_dir = find_checkpoint_dir(adapter_dir)
+            if checkpoint_dir:
+                model = BartForConditionalGeneration.from_pretrained(checkpoint_dir)
+            else:
+                model = BartForConditionalGeneration.from_pretrained(model_name)
+        else:
+            # Load base model if no adapter directory
+            model = BartForConditionalGeneration.from_pretrained(model_name)
+        
+        model.eval()
+        model.to("cuda" if torch.cuda.is_available() else "cpu")
+        
+        # Initialize ParaScorer
+        parascore_scorer = ParaScorer(model_type=model_name, lang='en')
+
+        # Evaluate on all datasets (ETPC, QQP, etc.)
+        for dataset_name, dataset in eval_datasets.items():
+            # Evaluate on the specific dataset
+            eval_results = evaluate_on_datasets(model, tokenizer, {dataset_name: dataset}, parascore_scorer)
+            
+            # Collect results with additional model type info and dataset name
+            for ds_name, scores in eval_results.items():
+                metrics_dict = {
+                    "Model": model_name,
+                    "Adapter": adapter_dir or 'base',
+                    "dataset_name": ds_name,  # Add the dataset name to the dictionary
+                    "rouge-1": scores.get("rouge-1", 0.0),
+                    "rouge-2": scores.get("rouge-2", 0.0),
+                    "rouge-l": scores.get("rouge-l", 0.0),
+                    "bleu": scores.get("bleu", 0.0),
+                    "free_score": scores.get("free_score", 0.0),
+                    "base_score": scores.get("base_score", 0.0),
+                }
+                metrics.append(metrics_dict)
+    
+    # Save all metrics to CSV
+    save_metrics_to_csv(metrics, output_csv)
+    
+def find_checkpoint_dir(adapter_dir):
+    """
+    Find the latest checkpoint directory within the given adapter directory.
+    
+    Args:
+        adapter_dir (str): The base adapter directory where checkpoints are stored.
+        
+    Returns:
+        str: Path to the latest checkpoint directory or None if no checkpoints are found.
+    """
+    checkpoint_dir = None
+    if os.path.exists(adapter_dir) and os.listdir(adapter_dir):
+        checkpoint_dirs = [f for f in os.listdir(adapter_dir) if f.startswith('checkpoint')]
+        if checkpoint_dirs:
+            # Get the latest checkpoint based on the creation time
+            checkpoint_dir = os.path.join(adapter_dir, max(checkpoint_dirs, key=lambda x: os.path.getctime(os.path.join(adapter_dir, x))))
+            print(f"Loading from fine-tuned checkpoint: {checkpoint_dir}")
+        else:
+            print("No checkpoint found in adapter directory, loading base model instead.")
+    else:
+        print(f"Adapter directory does not exist or is empty: {adapter_dir}. Loading base model instead.")
+    
+    return checkpoint_dir
 
 def main():    
     args = parse_args()
     
-    # Check if CUDA is available
-    if torch.cuda.is_available():
-        device = "cuda"
-        torch.cuda.empty_cache()  # Clear GPU cache before starting    
+    # Define output files
+    output_csv = f"out/eval_{args.model_name.split('/')[-1]}.csv"
+    output_json = f"out/generated_paraphrases_{args.model_name.split('/')[-1]}.json"   
     
-    # Find the latest checkpoint from the fine-tuned model directory
-    fine_tuned_model_dir = f"./out/gen-models/{args.model_name}_paraphrase-type-generation"  # Path to the fine-tuned model
-    
-    checkpoint_dir = None
-    if os.path.exists(fine_tuned_model_dir) and os.listdir(fine_tuned_model_dir):
-        checkpoint_dirs = [f for f in os.listdir(fine_tuned_model_dir) if f.startswith('checkpoint')]
-        if checkpoint_dirs:
-            checkpoint_dir = os.path.join(fine_tuned_model_dir, max(checkpoint_dirs, key=lambda x: os.path.getctime(os.path.join(fine_tuned_model_dir, x))))
-            print(f"Loading from fine-tuned checkpoint: {checkpoint_dir}")
-        else:
-            print("No checkpoint found in fine-tuned model directory, loading base model instead.")
-    else:
-        print(f"Fine-tuned model directory does not exist or is empty: {fine_tuned_model_dir}. Loading base model instead.")
-    
-    # Load model and tokenizer
-    tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large")
-    model = BartForConditionalGeneration.from_pretrained(checkpoint_dir) if checkpoint_dir else BartForConditionalGeneration.from_pretrained("facebook/bart-large")
-    model.eval()
-
-    model = model.to(device)  # Move model to GPU
+    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
     
     # Prepare evaluation datasets (ETPC and QQP)
-    etpc_dataset = load_dataset("jpwahle/etpc").filter(lambda x: x["etpc_label"] == 1)
-    etpc_dataset = etpc_dataset["train"].train_test_split(test_size=0.2)  # Split for evaluation
+    etpc_dataset = load_dataset("jpwahle/etpc", split="train").filter(lambda x: x["etpc_label"] == 1)
+    etpc_dataset = etpc_dataset["train"].train_test_split(test_size=0.05)  # Split for evaluation
+    qqp_dataset = load_dataset("glue", "qqp", split="validation")
+    
     eval_datasets = {
         "ETPC": ParaphraseTypeDataset(etpc_dataset["test"], tokenizer),  # Use test split for evaluation
-        #"QQP": ParaphraseDataset(load_dataset("glue", "qqp")["validation"], tokenizer),
-    }
+        "QQP": ParaphraseDataset(qqp_dataset, tokenizer),
+        #TODO APTY
+    }  
     
     # List of models to evaluate: base model and adapters
     models = [
@@ -349,19 +428,10 @@ def main():
         (args.model_name, args.ipo_dir, "ipo_model"),    # IPO adapter       
     ]
     
-
-    # Evaluate the model on different datasets
-    # Initialize ParaScorer
-    parascore_scorer = ParaScorer(model_type=args.model_name, lang='en')
-    eval_results = evaluate_on_datasets(model, tokenizer, eval_datasets, parascore_scorer)
-
-    # Print evaluation results
-    print("#" * 20)
-    print(f"Model: {args.model_name}")
-    print(f"Task: {args.task_name}")
-    for dataset_name, metrics in eval_results.items():
-        print(f"{dataset_name} evaluation results:", metrics)            
-    print("#" * 20)
+    # Run the evaluation
+    evaluate_models(models, eval_datasets, output_csv)
+    
+    #TODO save paraphrases to JSON
 
 if __name__ == "__main__":
     main()
