@@ -1,12 +1,11 @@
+import os
 import argparse
-import xml.etree.ElementTree as ET
-
-import evaluate
+import torch
 import numpy as np
 import pandas as pd
-import requests
+from sklearn.model_selection import train_test_split
 import spacy
-from datasets import concatenate_datasets, load_dataset
+from datasets import Dataset, load_dataset
 from transformers import (
     AutoModelForSequenceClassification,
     AutoModelForTokenClassification,
@@ -19,315 +18,7 @@ from transformers import (
 nlp = spacy.load("en_core_web_sm")
 
 # Groups
-grouped_types = {
-    "Morphology-based changes": [
-        "Inflectional changes",
-        "Modal verb changes",
-        "Derivational changes",
-    ],
-    "Lexicon-based changes": [
-        "Spelling changes",
-        "Change of format",
-        "Same Polarity Substitution (contextual)",
-        "Same Polarity Substitution (habitual)",
-        "Same Polarity Substitution (named ent.)",
-    ],
-    "Lexico-syntactic based changes": [
-        "Converse substitution",
-        "Opposite polarity substitution (contextual)",
-        "Opposite polarity substitution (habitual)",
-        "Synthetic/analytic substitution",
-    ],
-    "Syntax-based changes": [
-        "Coordination changes",
-        "Diathesis alternation",
-        "Ellipsis",
-        "Negation switching",
-        "Subordination and nesting changes",
-    ],
-    "Discourse-based changes": [
-        "Direct/indirect style alternations",
-        "Punctuation changes",
-        "Syntax/discourse structure changes",
-    ],
-    "Extremes": ["Entailment", "Identity", "Non-paraphrase"],
-    "Others": ["Addition/Deletion", "Change of order", "Semantic-based"],
-}
 
-
-def create_label_maps(etpc):
-    """
-    Creates label maps for the ETPC paraphrase types.
-
-    Returns:
-        tuple: A tuple containing the following dictionaries:
-            - label2cls_id: A dictionary mapping paraphrase types to class IDs.
-            - cls_id2label: A dictionary mapping class IDs to paraphrase types.
-            - paraphrase_type2cls_id: A dictionary mapping paraphrase types to class IDs.
-            - paraphrase_id2cls_type: A dictionary mapping class IDs to paraphrase types.
-            - paraphrase_type_to_category: A dictionary mapping paraphrase types to categories.
-            - cls_id2paraphrase_type_id: A dictionary mapping class IDs to paraphrase type IDs.
-            - paraphrase_type_id2cls_id: A dictionary mapping paraphrase type IDs to class IDs.
-
-    Example:
-        ```python
-        label_maps = create_label_maps(etpc)
-        print(label_maps)
-        ```"""
-    # Flatten paraphrase_types as list
-    all_types = {el for sublist in etpc["paraphrase_types"] for el in sublist}
-
-    # Download xml with paraphrase types to ids from url https://github.com/venelink/ETPC/blob/master/Corpus/paraphrase_types.xml
-    url = "https://raw.githubusercontent.com/venelink/ETPC/master/Corpus/paraphrase_types.xml"
-    r = requests.get(url)
-    root = ET.fromstring(r.text)
-
-    # Get paraphrase types, ids and categories
-    paraphrase_types = [child.find("type_name").text for child in root]
-    paraphrase_type_ids = [int(child.find("type_id").text) for child in root]
-    paraphrase_type_categories = [child.find("type_category").text for child in root]
-
-    # Create dictionary with paraphrase type as key and paraphrase type id as value
-    paraphrase_type2cls_id = dict(zip(paraphrase_types, paraphrase_type_ids))
-    paraphrase_id2cls_type = dict(zip(paraphrase_type_ids, paraphrase_types))
-
-    # Create dictionary with paraphrase type as key and paraphrase type category as value
-    paraphrase_type_to_category = dict(
-        zip(paraphrase_types, paraphrase_type_categories)
-    )
-
-    # Add 0 for no paraphrase to all dictionaries
-    paraphrase_type2cls_id["no_paraphrase"] = 0
-    paraphrase_id2cls_type[0] = "no_paraphrase"
-    paraphrase_type_to_category["no_paraphrase"] = "no_paraphrase"
-
-    # Create label2id and id2label for etpc paraphrase_types
-    label2cls_id = {label: i + 1 for i, label in enumerate(all_types)}
-    cls_id2label = {i: label for label, i in label2cls_id.items()}
-
-    # Add 0 for no paraphrase to all dictionaries
-    label2cls_id["no_paraphrase"] = 0
-    cls_id2label[0] = "no_paraphrase"
-
-    # Create a map from ids to the ones in paraphrase_type_to_id and vice versa
-    cls_id2paraphrase_type_id = {
-        i: paraphrase_type2cls_id[cls_id2label[i]] for i in cls_id2label
-    }
-    paraphrase_type_id2cls_id = {
-        paraphrase_type2cls_id[cls_id2label[i]]: i for i in cls_id2label
-    }
-
-    # Create a dictionary that maps ids from label2cls_id to the ones in paraphrase_type_to_id using the type label and vice versa
-    cls_id2paraphrase_type_id = {
-        i: paraphrase_type2cls_id[cls_id2label[i]] for i in cls_id2label
-    }
-    paraphrase_type_id2cls_id = {
-        paraphrase_type2cls_id[cls_id2label[i]]: i for i in cls_id2label
-    }
-
-    return (
-        label2cls_id,
-        cls_id2label,
-        paraphrase_type2cls_id,
-        paraphrase_id2cls_type,
-        paraphrase_type_to_category,
-        cls_id2paraphrase_type_id,
-        paraphrase_type_id2cls_id,
-    )
-
-
-def tokenize_and_align_labels(
-    examples,
-    sentence1_key,
-    sentence2_key,
-    paraphrase_type_id2cls_id,
-    tokenizer,
-):
-    """
-    Tokenizes the input sentences and aligns the labels with the tokenized inputs.
-
-    Args:
-        examples (dict): The input examples.
-        sentence1_key (str): The key for the first sentence in the examples.
-        sentence2_key (str): The key for the second sentence in the examples. Can be None.
-        paraphrase_type_id2cls_id (dict): A dictionary mapping paraphrase type IDs to class IDs.
-        tokenizer: The tokenizer object used for tokenization.
-
-    Returns:
-        dict: A dictionary containing the tokenized inputs with aligned labels.
-
-    Example:
-        ```python
-        examples = {
-            "sentence1": "This is sentence 1.",
-            "sentence2": "This is sentence 2.",
-            "sentence1_segment_location": [0, 1, 1, 2, 2],
-            "sentence2_segment_location": [0, 1, 1, 2, 2],
-        }
-        sentence1_key = "sentence1"
-        sentence2_key = "sentence2"
-        paraphrase_type_id2cls_id = {0: 0, 1: 1, 2: 2}
-        tokenizer = Tokenizer()
-
-        tokenized_inputs = tokenize_and_align_labels(
-            examples, sentence1_key, sentence2_key, paraphrase_type_id2cls_id, tokenizer
-        )
-        print(tokenized_inputs)
-        ```"""
-    sentence1_key = sentence1_key + "_tokenized"
-    sentence2_key = sentence2_key + "_tokenized"
-
-    args = (
-        (examples[sentence1_key],)
-        if sentence2_key is None
-        else (examples[sentence1_key], examples[sentence2_key])
-    )
-    tokenized_inputs = tokenizer(*args, truncation=True, is_split_into_words=True)
-    labels = []
-    for i, label in enumerate(
-        zip(
-            examples["sentence1_segment_location"],
-            examples["sentence2_segment_location"],
-        )
-    ):
-        # Map all labels to the id using paraphrase_
-        label = [
-            paraphrase_type_id2cls_id[paraphrase_id]
-            for paraphrase_id in label[0] + label[1]
-        ]
-
-        word_ids = tokenized_inputs.word_ids(
-            batch_index=i
-        )  # Map tokens to their respective word.
-        previous_word_idx = None
-        label_ids = []
-        for word_idx in word_ids:  # Set the special tokens to -100.
-            if word_idx is None or word_idx == previous_word_idx:
-                label_ids.append(-100)
-            else:  # Only label the first token of a given word.
-                label_ids.append(label[word_idx])
-            previous_word_idx = word_idx
-        labels.append(label_ids)
-
-    tokenized_inputs["labels"] = labels
-    return tokenized_inputs
-
-
-def split_dataset_binary(dataset, seed=42):
-    """
-    Tokenizes the input sentences and aligns the labels with the tokenized inputs.
-
-    Args:
-        examples (dict): The input examples.
-        sentence1_key (str): The key for the first sentence in the examples.
-        sentence2_key (str): The key for the second sentence in the examples. Can be None.
-        paraphrase_type_id2cls_id (dict): A dictionary mapping paraphrase type IDs to class IDs.
-        tokenizer: The tokenizer object used for tokenization.
-
-    Returns:
-        dict: A dictionary containing the tokenized inputs with aligned labels.
-
-    Example:
-        ```python
-        examples = {
-            "sentence1": "This is sentence 1.",
-            "sentence2": "This is sentence 2.",
-            "sentence1_segment_location": [0, 1, 1, 2, 2],
-            "sentence2_segment_location": [0, 1, 1, 2, 2],
-        }
-        sentence1_key = "sentence1"
-        sentence2_key = "sentence2"
-        paraphrase_type_id2cls_id = {0: 0, 1: 1, 2: 2}
-        tokenizer = Tokenizer()
-
-        tokenized_inputs = tokenize_and_align_labels(
-            examples, sentence1_key, sentence2_key, paraphrase_type_id2cls_id, tokenizer
-        )
-        print(tokenized_inputs)
-        ```
-    """
-
-    # Sample examples with 70% train and 30% test with equal distribution of labels
-    num_positive = len(dataset.filter(lambda example: example["labels"] == 1))
-    num_negative = len(dataset.filter(lambda example: example["labels"] == 0))
-    train_negatives = (
-        dataset.filter(lambda example: example["labels"] == 0)
-        .shuffle(seed=seed)
-        .select(range(int(num_negative * 0.7)))
-    )
-    train_positives = (
-        dataset.filter(lambda example: example["labels"] == 1)
-        .shuffle(seed=seed)
-        .select(range(int(num_positive * 0.7)))
-    )
-    train = concatenate_datasets([train_negatives, train_positives])
-    test_negatives = (
-        dataset.filter(lambda example: example["labels"] == 0)
-        .shuffle(seed=seed)
-        .select(range(int(num_negative * 0.7), num_negative))
-    )
-    test_positives = (
-        dataset.filter(lambda example: example["labels"] == 1)
-        .shuffle(seed=seed)
-        .select(range(int(num_positive * 0.7), num_positive))
-    )
-    test = concatenate_datasets([test_negatives, test_positives])
-    return train, test
-
-
-def split_dataset_by_type(dataset, train_percent=0.5):
-    """
-    Splits a dataset into training and testing sets based on paraphrase types.
-
-    Args:
-        dataset (dict): The dataset to split.
-        train_percent (float, optional): The percentage of data to allocate for training.
-        Defaults to 0.5.
-
-    Returns:
-        tuple: A tuple containing two lists: train and test. train contains the training examples,
-        and test contains the testing examples.
-
-    Example:
-        ```python
-        dataset = {
-            "paraphrase_types": [["type1"], ["type2"]],
-            "examples": [
-                {"paraphrase_types": ["type1"]},
-                {"paraphrase_types": ["type2"]},
-                {"paraphrase_types": ["type1", "type2"]},
-            ]
-        }
-        train, test = split_dataset_by_type(dataset, train_percent=0.7)
-        print(train)
-        print(test)
-        ```
-    """
-
-    train = []
-    test = []
-    counts = {}
-    for paraphrase_type in dataset["paraphrase_types"]:
-        for par_type in paraphrase_type:
-            if par_type not in counts:
-                counts[par_type] = 1
-            else:
-                counts[par_type] += 1
-    internal_counts = {key: 0 for key in counts}
-
-    for example in dataset:
-        types = example["paraphrase_types"]
-        if len(types) > 0:
-            # Get the type which has the lowest internal count
-            par_type = min(types, key=lambda x: internal_counts[x])
-            if internal_counts[par_type] < counts[par_type] * (1 - train_percent):
-                test.append(example)
-            else:
-                train.append(example)
-            for par_types in types:
-                internal_counts[par_types] += 1
-
-    return train, test
 
 
 def parse_args():
@@ -365,76 +56,96 @@ def parse_args():
         default="paraphrase-detection",
         help="Name of the task to use",
     )
-    parser.add_argument(
-        "--device",
-        type=str,
-        default="cuda",
-        help="Hardware to use, either of 'cpu', 'cuda', or 'mps'",
-    )
+
     return parser.parse_args()
 
-
-def tokenize_fn(examples, sentence1_key, sentence2_key, tokenizer):
+def load_and_preprocess_apty_dataset(dataset):
     """
-    Tokenizes input examples using a tokenizer.
+    Load and preprocess the APTY-ranked dataset into Hugging Face Dataset format for DPOTrainer.
+    
+    Args:
+        dataset: The raw dataset object containing 'train' data.
+        
+    Returns:
+        train_dataset (Dataset): Training dataset as Hugging Face Dataset object.
+        test_dataset (Dataset): Validation dataset as Hugging Face Dataset object.
+    """
+    
+    # Convert dataset into a pandas DataFrame
+    data = pd.DataFrame(dataset["train"])
+    
+    # Normalize the 'meta' column to create separate columns for 'id', 'annotators', and 'APT'
+    meta_df = pd.json_normalize(data['meta'])
+    data = data.drop(columns=['meta']).reset_index(drop=True)
+    data = pd.concat([data, meta_df], axis=1)
+
+    # Extract the text from the nested dictionaries for 'chosen' and 'rejected'
+    data['original'] = data['original'].apply(lambda x: str(x['text']) if isinstance(x, dict) else str(x))
+    data['chosen'] = data['chosen'].apply(lambda x: str(x['text']) if isinstance(x, dict) else str(x))
+    data['rejected'] = data['rejected'].apply(lambda x: str(x['text']) if isinstance(x, dict) else str(x))
+
+    # Strip whitespace
+    data['original'] = data['original'].str.strip()
+    data['chosen'] = data['chosen'].str.strip()
+    data['rejected'] = data['rejected'].str.strip()
+
+    # Rename columns to match DPOTrainer's expected format
+    data = data.rename(columns={'original': 'prompt'})
+
+    # Split the dataset into training and test sets
+    train_df, test_df = train_test_split(data, test_size=0.3, stratify=data["APT"], random_state=42)
+
+    # Convert the pandas DataFrames to Hugging Face Dataset objects
+    train_dataset = Dataset.from_pandas(train_df)
+    test_dataset = Dataset.from_pandas(test_df)
+
+    return train_dataset, test_dataset
+
+def modify_last_character(text: str) -> str:
+    """
+    Modify the last character of a string based on specific rules.
 
     Args:
-        examples (dict): The input examples.
-        sentence1_key (str): The key for the first sentence in the examples.
-        sentence2_key (str, optional): The key for the second sentence in the examples.
-        Defaults to None.
-        tokenizer (Tokenizer): The tokenizer to use for tokenization.
+        text (str): The text to modify.
 
     Returns:
-        dict: The tokenized inputs.
-
-    Example:
-        ```python
-        examples = {
-            "sentence1": "This is sentence 1",
-            "sentence2": "This is sentence 2",
-            "etpc_label": 1
-        }
-        sentence1_key = "sentence1"
-        sentence2_key = "sentence2"
-        tokenizer = Tokenizer()
-        tokenized_inputs = tokenize_fn(examples, sentence1_key, sentence2_key, tokenizer)
-        print(tokenized_inputs)
-        ```
+        str: The modified text.
     """
+    if text.endswith('"'):
+        text = text[:-1]  # Remove the last double quote
+    elif text[-1].isalpha():
+        text += '.'  # Add a '.' if the last character is a letter
 
-    tokenized_inputs = tokenizer(
-        *(
-            (examples[sentence1_key],)
-            if sentence2_key is None
-            else (examples[sentence1_key], examples[sentence2_key])
-        ),
-        padding="max_length",
-        truncation=True,
-    )
-    tokenized_inputs["labels"] = examples["etpc_label"]
-
-    return tokenized_inputs
-
+    return text
 
 def main():
     args = parse_args()
+    
+    fine_tuned_model_dir = f"./out/gen-models/{args.model_name}_paraphrase-type-generation"  # Path to the fine-tuned model
+    output_dir = f"./out/gen-models/{args.model_name}_{args.task_name}"
+    
+    # Check if CUDA is available
+    if torch.cuda.is_available():
+        device = "cuda"
+        torch.cuda.empty_cache()  # Clear GPU cache before starting
 
-    # Load the dataset
-    dataset = load_dataset(args.dataset_name)
+    # Load training and evaluation datasets
+    dataset = load_dataset("worta/apty", "APTY-ranked")
+    train_dataset, eval_dataset = load_and_preprocess_apty_dataset(dataset)
+    
+    # Find the latest checkpoint from the fine-tuned model directory
+    checkpoint_dir = None
+    if os.path.exists(fine_tuned_model_dir) and os.listdir(fine_tuned_model_dir):
+        checkpoint_dirs = [f for f in os.listdir(fine_tuned_model_dir) if f.startswith('checkpoint')]
+        if checkpoint_dirs:
+            checkpoint_dir = os.path.join(fine_tuned_model_dir, max(checkpoint_dirs, key=lambda x: os.path.getctime(os.path.join(fine_tuned_model_dir, x))))
+            print(f"Loading from fine-tuned checkpoint: {checkpoint_dir}")
+        else:
+            print("No checkpoint found in fine-tuned model directory.")
+            return
 
     # Create tokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, add_prefix_space=True)
-
-    if "etpc" in args.dataset_name:
-        # ETPC dataset keys
-        sentence1_key = "sentence1"
-        sentence2_key = "sentence2"
-        dataset = dataset["train"]
-    elif "qqp" in args.dataset_name:
-        # QQP dataset keys
-        sentence1_key = "question1"
-        sentence2_key = "question2"
 
     # For the paraphrase_type_detection task, we need to create a data collator
     data_collator = None
