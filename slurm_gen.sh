@@ -1,11 +1,11 @@
 #!/bin/sh
-#SBATCH --job-name=paraphrase_gen
+#SBATCH --job-name=para_gen
 #SBATCH --account=luebbers_masters
 #SBATCH --partition=gpu
 #SBATCH -t 2:00:00
 #SBATCH -n 1
 #SBATCH --nodes=1
-#SBATCH --gpus 1
+#SBATCH --gpus RTX5000:1
 #SBATCH -c 1
 #SBATCH --mail-type=all              # send mail when job begins and ends
 #SBATCH --mail-user=c.luebbers@stud.uni-goettingen.de 
@@ -34,7 +34,7 @@ echo "Current environment: $(which python)"
 echo $PATH
 
 # Set PYTHONPATH to point to the correct site-packages directory
-export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/unsloth_env/lib/python3.11/site-packages:$PYTHONPATH
+export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/wahle_env/lib/python3.10/site-packages:$PYTHONPATH
 
 export TOKENIZERS_PARALLELISM=false
 
