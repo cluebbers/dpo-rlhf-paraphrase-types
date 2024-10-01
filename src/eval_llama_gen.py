@@ -45,8 +45,9 @@ def parse_arguments():
     """
     parser = argparse.ArgumentParser(description="Generate paraphrases and evaluate models.")
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-2-7b-hf", help="Base model path.")
-    parser.add_argument("--etpc_dir", type=str, default="src/gen-models/llama-7b-etpc", help="ETPC adapter directory.")
-    parser.add_argument("--dpo_dir", type=str, default="out/gen-models/dpo_llama-7b_apty", help="DPO adapter directory.")
+    parser.add_argument("--etpc_dir", type=str, default="out/gen-models/llama-7b-etpc", help="ETPC adapter directory.")
+    parser.add_argument("--dpo_dir", type=str, default="out/gen-models/dpo_llama-7b-hf_sigmoid", help="DPO adapter directory.")
+    parser.add_argument("--ipo_dir", type=str, default="out/gen-models/dpo_llama-7b-hf_ipo", help="DPO adapter directory.")
     return parser.parse_args()
 
 def load_data(filename, num_examples=None):
@@ -421,7 +422,7 @@ def main():
 
     # Set batch size and number of examples
     batch_size = 10  
-    num_examples = 10  
+    num_examples = 1000  
 
     # Ensure that num_examples is divisible by batch_size
     if num_examples % batch_size != 0:
@@ -432,7 +433,7 @@ def main():
     output_json = f"out/generated_paraphrases_{args.model_name.split('/')[-1]}.json"
     
     # Load datasets, limiting ETPC data to num_examples
-    apty_data = read_sentences_from_files("src/basesentences")
+    apty_data = read_sentences_from_files("out/basesentences")
     etpc_data = load_data("out/generation_etpc_test.jsonl", num_examples=num_examples)
 
     # Load base model and tokenizer once
@@ -442,7 +443,8 @@ def main():
     models = [
         (args.model_name, None, "base_model"),           # Base model (no adapter)
         (args.model_name, args.etpc_dir, "etpc_model"),  # ETPC adapter
-        (args.model_name, args.dpo_dir, "dpo_model"),    # DPO adapter        
+        (args.model_name, args.dpo_dir, "dpo_model"),    # DPO adapter 
+        (args.model_name, args.ipo_dir, "ipo_model"),    # IPO adapter       
     ]
 
 

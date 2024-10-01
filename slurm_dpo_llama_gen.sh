@@ -24,6 +24,7 @@ echo "Current node: ${SLURM_NODELIST}"
 
 echo "Model: $1"
 echo "Adapter: $2"
+echo "Loss: $3"
 
 # For debugging purposes.
 python --version
@@ -37,9 +38,10 @@ export TOKENIZERS_PARALLELISM=false
 # Set PYTHONPATH to point to the correct site-packages directory
 export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/dpo_env/lib/python3.10/site-packages:$PYTHONPATH
 
-python3 src/dpo_llama_gen.py --model_name $1 --adapter_dir $2
+python3 src/dpo_llama_gen.py --model_name $1 --adapter_dir $2 --loss_type $3
 
 #TODO
 # sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-2-7b-hf llama/llama-7b-etpc
 # sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-2-13b-hf llama/llama-13b-etpc
-# #SBATCH --gpus V100:1
+# sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-2-7b-hf llama/llama-7b-etpc ipo
+# sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-2-13b-hf llama/llama-13b-etpc ipo

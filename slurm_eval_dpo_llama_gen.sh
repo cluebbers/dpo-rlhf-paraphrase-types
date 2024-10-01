@@ -23,7 +23,9 @@ echo "Working directory: $PWD"
 echo "Current node: ${SLURM_NODELIST}"
 
 echo "Model: $1"
-echo "Adapter: $2"
+echo "ETPC-Adapter: $2"
+echo "DPO-Adapter: $3"
+echo "IPO-Adapter: $4"
 
 # For debugging purposes.
 python --version
@@ -35,9 +37,8 @@ echo $PATH
 
 export TOKENIZERS_PARALLELISM=false
 
-python3 src/eval_generation_llama.py --model_name $1 --adapter_dir $2
+python3 src/eval_generation_llama.py --model_name $1 --etpc_dir $2 --dpo_dir $3 --ipo_dir $4
 
 #TODO
-# sbatch slurm_eval_dpo_llama_gen.sh meta-llama/Llama-2-7b-hf out/dpo_llama-7b_apty
-# sbatch slurm_eval_dpo_llama_gen.sh meta-llama/Llama-2-13b-hf out/dpo_llama-13b_apty
-# #SBATCH --gpus V100:1
+# sbatch slurm_eval_dpo_llama_gen.sh meta-llama/Llama-2-7b-hf out/gen-models/llama-7b-etpc out/gen-models/dpo_llama-7b-hf_sigmoid out/gen-models/dpo_llama-7b-hf_ipo
+# sbatch slurm_eval_dpo_llama_gen.sh meta-llama/Llama-2-13b-hf out/gen-models/llama-13b-etpc out/gen-models/dpo_llama-13b-hf_sigmoid out/gen-models/dpo_llama-13b-hf_ipo
