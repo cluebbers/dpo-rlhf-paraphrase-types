@@ -6,12 +6,9 @@ from tqdm import tqdm
 
 from datasets import load_dataset
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
+from typing import Dict, List, Optional, Any
 from rouge import Rouge
-from transformers import (
-    AutoTokenizer,
-    BartForConditionalGeneration,
-    PegasusForConditionalGeneration,
-    )
+from transformers import AutoTokenizer, BartForConditionalGeneration
 
 from parascore import ParaScorer 
 
@@ -225,8 +222,6 @@ def parascore_evaluation(paraphrases: list, sources: list, references: list, par
         "base_score": avg_base_score,   
     }
 
-
-
 def calculate_bleu(reference, candidate):
     """
     Calculates the BLEU score between a reference sentence and a candidate sentence.
@@ -303,14 +298,11 @@ def parse_args():
         ```"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="facebook/bart-large")
-    parser.add_argument(
-        "--task_name",
-        type=str,
-        default="paraphrase-type-generation",
-        help="Name of the task to use",
-    )
-
+    parser.add_argument("--etpc_dir", type=str, default="out/gen-models/facebook/bart-large_paraphrase-type-generation", help="ETPC adapter directory.")
+    parser.add_argument("--dpo_dir", type=str, default="out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid", help="DPO adapter directory.")
+    parser.add_argument("--ipo_dir", type=str, default="out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo", help="DPO adapter directory.")
     return parser.parse_args()
+
 
 def main():    
     args = parse_args()
@@ -336,11 +328,9 @@ def main():
     
     # Load model and tokenizer
     tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large")
-    model = (
-        BartForConditionalGeneration.from_pretrained(checkpoint_dir) if checkpoint_dir else BartForConditionalGeneration.from_pretrained("facebook/bart-large")
-        if "bart" in args.model_name 
-        else PegasusForConditionalGeneration.from_pretrained(checkpoint_dir) if checkpoint_dir else PegasusForConditionalGeneration.from_pretrained("google/pegasus-large")
-    )
+    model = BartForConditionalGeneration.from_pretrained(checkpoint_dir) if checkpoint_dir else BartForConditionalGeneration.from_pretrained("facebook/bart-large")
+    model.eval()
+
     model = model.to(device)  # Move model to GPU
     
     # Prepare evaluation datasets (ETPC and QQP)
@@ -350,6 +340,15 @@ def main():
         "ETPC": ParaphraseTypeDataset(etpc_dataset["test"], tokenizer),  # Use test split for evaluation
         #"QQP": ParaphraseDataset(load_dataset("glue", "qqp")["validation"], tokenizer),
     }
+    
+    # List of models to evaluate: base model and adapters
+    models = [
+        (args.model_name, None, "base_model"),           # Base model (no adapter)
+        (args.model_name, args.etpc_dir, "etpc_model"),  # ETPC adapter
+        (args.model_name, args.dpo_dir, "dpo_model"),    # DPO adapter 
+        (args.model_name, args.ipo_dir, "ipo_model"),    # IPO adapter       
+    ]
+    
 
     # Evaluate the model on different datasets
     # Initialize ParaScorer

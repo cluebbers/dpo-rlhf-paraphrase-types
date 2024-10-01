@@ -14,7 +14,7 @@
 
 module load miniforge3
 module load cuda
-source activate wahle_env
+source activate dpo_env
 
 # Printing out some info.
 echo "Submitting job with sbatch from directory: ${SLURM_SUBMIT_DIR}"
@@ -35,7 +35,7 @@ echo "Current environment: $(which python)"
 echo $PATH
 
 # Set PYTHONPATH to point to the correct site-packages directory
-export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/wahle_env/lib/python3.10/site-packages:$PYTHONPATH
+export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/dpo_env/lib/python3.10/site-packages:$PYTHONPATH
 
 export TOKENIZERS_PARALLELISM=false
 
