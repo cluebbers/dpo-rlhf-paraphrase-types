@@ -6,11 +6,7 @@ import pandas as pd
 
 from datasets import load_dataset
 from tqdm import tqdm
-from transformers import (
-    AutoTokenizer,
-    BartForConditionalGeneration,
-    PegasusForConditionalGeneration,
-)
+from transformers import AutoTokenizer, BartForConditionalGeneration
 from sklearn.model_selection import train_test_split
 from trl import DPOTrainer, DPOConfig
 from datasets import Dataset
@@ -92,8 +88,9 @@ def parse_args():
         "--task_name",
         type=str,
         default="paraphrase-type-generation",
-        help="Name of the task to use",
+        help="paraphrase-type-generation or paraphrase-generation",
     )
+    parser.add_argument("--loss_type", type=str, default="sigmoid", help="sigmoid or ipo")
 
     return parser.parse_args()
 
@@ -105,8 +102,7 @@ def main():
         device = "cuda"
         torch.cuda.empty_cache()  # Clear GPU cache before starting
 
-    fine_tuned_model_dir = f"./out/gen-models/{args.model_name}_paraphrase-type-generation"  # Path to the fine-tuned model
-    output_dir = f"./out/gen-models/{args.model_name}_{args.task_name}"
+    fine_tuned_model_dir = f"./out/gen-models/{args.model_name}_{args.task_name}"  # Path to the fine-tuned model
     
     # Find the latest checkpoint from the fine-tuned model directory
     checkpoint_dir = None
@@ -121,11 +117,7 @@ def main():
     
     # Load model and tokenizer
     tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large")
-    model = (
-        BartForConditionalGeneration.from_pretrained(checkpoint_dir)
-        if "bart" in args.model_name
-        else PegasusForConditionalGeneration.from_pretrained(checkpoint_dir)
-    )
+    model = BartForConditionalGeneration.from_pretrained(checkpoint_dir)
     model = model.to(device)  # Move model to GPU
 
     # Load training and evaluation datasets
@@ -143,9 +135,10 @@ def main():
         evaluation_strategy="epoch",
         save_steps=2000,
         save_total_limit=2,
-        output_dir=output_dir,
+        loss_type=args.loss_type,
         remove_unused_columns=False,  # Ensures unused columns aren't removed for DPOTrainer
         fp16=True, # Enable mixed precision training
+        output_dir = f"./out/gen-models/{args.model_name}_{args.task_name}_{args.loss_type}",
     )
             
     # Set up trainer

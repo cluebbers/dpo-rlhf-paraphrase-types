@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --job-name=para_gen
+#SBATCH --job-name=dpo_para_gen
 #SBATCH --account=luebbers_masters
 #SBATCH --partition=gpu
 #SBATCH -t 2:00:00
@@ -24,6 +24,7 @@ echo "Current node: ${SLURM_NODELIST}"
 
 echo "Model: $1"
 echo "Task: $2"
+echo "loss_type: $3"
 
 # For debugging purposes.
 python --version
@@ -38,10 +39,12 @@ export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/wahle_env/lib/py
 
 export TOKENIZERS_PARALLELISM=false
 
-python3 src/finetune_generation.py --task_name $2 --model_name $1
+python3 src/finetune_generation.py --model_name $1 --task_name $2 --loss_type $3
 
 # done
 
 #TODO
-# sbatch slurm_gen.sh facebook/bart-large paraphrase-type-generation
-# sbatch slurm_gen.sh facebook/bart-large paraphrase-generation
+# sbatch slurm_gen.sh facebook/bart-large paraphrase-type-generation sigmoid
+# sbatch slurm_gen.sh facebook/bart-large paraphrase-generation sigmoid
+# sbatch slurm_gen.sh facebook/bart-large paraphrase-type-generation ipo
+# sbatch slurm_gen.sh facebook/bart-large paraphrase-generation ipo
