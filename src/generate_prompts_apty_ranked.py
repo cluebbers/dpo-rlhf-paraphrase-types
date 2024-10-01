@@ -1,11 +1,39 @@
 import json
 import os
 import random
-
-from datasets import load_dataset
 import pandas as pd
+from datasets import load_dataset
 from sklearn.model_selection import train_test_split
 from tqdm import tqdm
+
+def clean_text(text):
+    """
+    Clean the text to fix encoding issues.
+    
+    Args:
+        text (str): The original text that may contain encoding issues.
+
+    Returns:
+        str: The cleaned text.
+    """
+    replacements = {
+        "Ãƒâ€šÃ‚Â½": "½",  # One-half
+        "Ãƒâ€šÃ‚Â¼": "¼",  # One-quarter
+        "Ãƒâ€šÃ‚Â©": "©",  # Copyright
+        "Ãƒâ€šÃ‚Â¢": "¢",  # Cent
+        "Ãƒâ€šÃ‚Â¡": "¡",  # Inverted exclamation
+        "Ãƒâ€šÃ‚Â¿": "¿",  # Inverted question
+        "ÃƒÂ¢Ã‚â‚¬": "–",  # En dash
+        "ÃƒÂ¢Ã‚â„¢": "’",  # Right single quotation
+        # Catch-all for any occurrence of Ãƒâ€¦
+        "Ãƒâ€š": "",  # Remove leading misencoded sequences
+        "Ãƒ": "",  # Remove leading misencoded sequences
+    }
+
+    for wrong, right in replacements.items():
+        text = text.replace(wrong, right)
+
+    return text
 
 def preprocess_apty_ranked_dataset(data: pd.DataFrame) -> pd.DataFrame:
     """
@@ -27,6 +55,11 @@ def preprocess_apty_ranked_dataset(data: pd.DataFrame) -> pd.DataFrame:
     data['chosen'] = data['chosen'].apply(lambda x: x['text'] if isinstance(x, dict) else str(x))
     data['rejected'] = data['rejected'].apply(lambda x: x['text'] if isinstance(x, dict) else str(x))
 
+    # Clean the text to fix encoding issues
+    data['original'] = data['original'].apply(clean_text)
+    data['chosen'] = data['chosen'].apply(clean_text)
+    data['rejected'] = data['rejected'].apply(clean_text)
+
     # Strip whitespace
     data['original'] = data['original'].str.strip()
     data['chosen'] = data['chosen'].str.strip()
@@ -41,7 +74,7 @@ def preprocess_apty_ranked_dataset(data: pd.DataFrame) -> pd.DataFrame:
     data = data.drop_duplicates(subset=['original', 'chosen', 'rejected'])
 
     return data
-    
+
 def modify_last_character(text: str) -> str:
     """
     Modify the last character of a string based on specific rules.
@@ -83,7 +116,6 @@ def write_to_jsonl(data, filename):
             # Find rejected paraphrase types by excluding the ones present in instance["APT"]
             rejected_paraphrase_types = [ptype for ptype in all_paraphrase_types if ptype not in instance["APT"]]
 
-
             # Construct detection entry
             detection_entry = {
                 "prompt": (
@@ -110,7 +142,7 @@ def write_to_jsonl(data, filename):
                         ),
                         "chosen": f" {instance['APT']}",
                         "rejected": f"{', '.join(rejected_paraphrase_types)}",
-                    },
+                    }
 
             # Construct generation entry
             generation_entry = {
@@ -126,10 +158,9 @@ def write_to_jsonl(data, filename):
 
             # Write entries to the respective files
             if "detection" in filename:
-                file.write(json.dumps(detection_entry) + "\n")
+                file.write(json.dumps(detection_entry, ensure_ascii=False) + "\n")
             else:
-                file.write(json.dumps(generation_entry) + "\n")
-
+                file.write(json.dumps(generation_entry, ensure_ascii=False) + "\n")
 
 def main():
     """Create JSONL files for the APTY-ranked dataset."""
