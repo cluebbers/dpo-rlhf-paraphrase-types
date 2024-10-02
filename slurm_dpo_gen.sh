@@ -46,7 +46,5 @@ python3 src/finetune_generation.py --model_name $1 --task_name $2 --loss_type $3
 # sbatch slurm_gen.sh facebook/bart-large paraphrase-type-generation ipo
 
 #TODO
-
 # sbatch slurm_gen.sh facebook/bart-large paraphrase-generation sigmoid
-
 # sbatch slurm_gen.sh facebook/bart-large paraphrase-generation ipo
