@@ -14,7 +14,7 @@
 
 module load miniforge3
 module load cuda
-source activate unsloth_env
+source activate dpo_env
 
 # Printing out some info.
 echo "Submitting job with sbatch from directory: ${SLURM_SUBMIT_DIR}"
@@ -36,8 +36,10 @@ echo "Current environment: $(which python)"
 echo $PATH
 
 export TOKENIZERS_PARALLELISM=false
+# Set PYTHONPATH to point to the correct site-packages directory
+export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/dpo_env/lib/python3.10/site-packages:$PYTHONPATH
 
-python3 src/eval_generation_llama.py --model_name $1 --etpc_dir $2 --dpo_dir $3 --ipo_dir $4
+python3 src/eval_llama_gen.py --model_name $1 --etpc_dir $2 --dpo_dir $3 --ipo_dir $4
 
 #TODO
 # sbatch slurm_eval_dpo_llama_gen.sh meta-llama/Llama-2-7b-hf out/gen-models/llama-7b-etpc out/gen-models/dpo_meta-llama-Llama-7b-hf_sigmoid out/gen-models/dpo_meta-llama-Llama-7b-hf_ipo
