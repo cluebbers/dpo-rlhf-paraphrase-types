@@ -126,22 +126,16 @@ def main():
 
     # Set up training arguments  
     training_args = DPOConfig(
-        per_device_train_batch_size=16,  # Increase if GPU memory allows
-        gradient_accumulation_steps=2,  # Accumulate gradients if memory is tight
-        num_train_epochs=3,
-        logging_dir="./logs",
-        logging_steps=500,
-        do_train=True,
         eval_strategy="epoch",
-        save_steps=2000,
-        save_total_limit=2,
+        per_device_train_batch_size=16,  
+        gradient_accumulation_steps=2,        
         loss_type=args.loss_type,
         remove_unused_columns=False,  # Ensures unused columns aren't removed for DPOTrainer
         fp16=True, # Enable mixed precision training
         output_dir = f"./out/gen-models/{args.model_name}_{args.task_name}_{args.loss_type}",
-        max_length=512,
-        max_prompt_length=128,
-        max_target_length=128,
+        max_length=1024,
+        max_prompt_length=512,
+        max_target_length=512,
     )
             
     # Set up trainer
@@ -150,7 +144,6 @@ def main():
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
-        beta=0.1,
         tokenizer=tokenizer,
     )
     

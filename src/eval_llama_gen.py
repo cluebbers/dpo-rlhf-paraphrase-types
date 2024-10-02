@@ -45,8 +45,8 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Generate paraphrases and evaluate models.")
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-2-7b-hf", help="Base model path.")
     parser.add_argument("--etpc_dir", type=str, default="out/gen-models/llama-7b-etpc", help="ETPC adapter directory.")
-    parser.add_argument("--dpo_dir", type=str, default="out/gen-models/dpo_llama-7b-hf_sigmoid", help="DPO adapter directory.")
-    parser.add_argument("--ipo_dir", type=str, default="out/gen-models/dpo_llama-7b-hf_ipo", help="DPO adapter directory.")
+    parser.add_argument("--dpo_dir", type=str, default="out/gen-models/dpo_meta-llama-Llama-7b-hf_sigmoid", help="DPO adapter directory.")
+    parser.add_argument("--ipo_dir", type=str, default="out/gen-models/dpo_meta-llama-Llama-7b-hf_ipo", help="DPO adapter directory.")
     return parser.parse_args()
 
 def load_data(filename, num_examples=None):
