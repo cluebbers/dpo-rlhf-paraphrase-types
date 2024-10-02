@@ -41,7 +41,7 @@ export TOKENIZERS_PARALLELISM=false
 python3 src/finetune_generation.py --task_name $2 --model_name $1
 
 # done
+# sbatch slurm_gen.sh facebook/bart-large paraphrase-type-generation
 
 #TODO
-# sbatch slurm_gen.sh facebook/bart-large paraphrase-type-generation
 # sbatch slurm_gen.sh facebook/bart-large paraphrase-generation

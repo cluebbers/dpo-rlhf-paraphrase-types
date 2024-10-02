@@ -41,7 +41,7 @@ export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/dpo_env/lib/pyth
 python3 src/dpo_llama_gen.py --model_name $1 --adapter_dir $2 --loss_type $3
 
 #TODO
-# sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-2-7b-hf llama/llama-7b-etpc
-# sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-2-13b-hf llama/llama-13b-etpc
-# sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-2-7b-hf llama/llama-7b-etpc ipo
-# sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-2-13b-hf llama/llama-13b-etpc ipo
+# sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-2-7b-hf out/gen-models/llama-7b-etpc sigmoid
+# sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-2-13b-hf out/gen-models/llama-13b-etpc sigmoid
+# sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-2-7b-hf out/gen-models/llama-7b-etpc ipo
+# sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-2-13b-hf out/gen-models/llama-13-etpc ipo
