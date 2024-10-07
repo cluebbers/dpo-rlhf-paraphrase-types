@@ -213,6 +213,9 @@ def generate_paraphrases(
         for output in outputs:
             generated_tokens = output[input_token_len:]
             paraphrase = tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
+            # Log and track empty paraphrases
+            if not paraphrase:
+                logging.warning(f"Empty paraphrase generated for input: {prompts[outputs.index(output)]}")
             paraphrases.append(paraphrase)
 
         logging.debug(f"Generated {len(outputs)} paraphrases in batch {i // batch_size + 1}")
@@ -234,10 +237,32 @@ def evaluate_paraphrases(paraphrases: List[str], references: List[str]) -> Dict[
     Returns:
         Dict[str, float]: A dictionary containing the evaluation scores.
     """
-
     # ROUGE scores
     rouge = Rouge()
-    rouge_scores = rouge.get_scores(paraphrases, references, avg=True)
+    valid_paraphrases = []
+    valid_references = []
+
+    # Collect only valid pairs for ROUGE evaluation
+    for idx, (paraphrase, reference) in enumerate(zip(paraphrases, references)):
+        try:
+            # Ensure each pair is valid before adding to the evaluation
+            rouge.get_scores(paraphrase, reference)
+            valid_paraphrases.append(paraphrase)
+            valid_references.append(reference)
+        except ValueError as e:
+            logging.warning(f"Skipping paraphrase at index {idx} due to ROUGE error: {e}")
+
+    # Perform ROUGE evaluation on valid pairs
+    if valid_paraphrases:
+        rouge_scores = rouge.get_scores(valid_paraphrases, valid_references, avg=True)
+    else:
+        # Return zero scores if no valid paraphrases
+        logging.warning("No valid paraphrases for ROUGE evaluation.")
+        rouge_scores = {
+            "rouge-1": {"f": 0},
+            "rouge-2": {"f": 0},
+            "rouge-l": {"f": 0},
+        }
 
     # BLEU scores
     smoothie = SmoothingFunction().method4
@@ -253,7 +278,7 @@ def evaluate_paraphrases(paraphrases: List[str], references: List[str]) -> Dict[
         # BLEU scores
         "BLEU": avg_bleu,
     }
-    
+
 def save_metrics_to_csv(metrics, output_csv):
     """
     Save evaluation metrics to a CSV file.
@@ -338,6 +363,13 @@ def process_model_generation(
     # Generate paraphrases for APTY dataset
     for paraphrase_type, sentences in apty_data.items():
         paraphrases = generate_paraphrases(model, tokenizer, sentences, "apty", paraphrase_type, batch_size=batch_size)
+        
+        # Log each paraphrase and its original sentence
+        for idx, paraphrase in enumerate(paraphrases):
+            if not paraphrase.strip():
+                logging.warning(f"Empty paraphrase generated for APTY sentence at index {idx}: {sentences[idx]}")
+            
+            
         all_paraphrases.extend([{
             "Original": sentence,
             "APT": paraphrase_type,
@@ -350,6 +382,10 @@ def process_model_generation(
     etpc_paraphrases = generate_paraphrases(model, tokenizer, etpc_data, "etpc", batch_size=batch_size)
     for index, paraphrase in enumerate(etpc_paraphrases):
         full_content = etpc_data[index]["messages"][0]["content"]
+        
+        if not paraphrase.strip():
+            logging.warning(f"Empty paraphrase for ETPC content at index {index}: {full_content}")
+
 
         # Safely extract the sentence and paraphrase types from the ETPC content
         if "Sentence:" in full_content and "Paraphrase Types:" in full_content:
@@ -389,11 +425,11 @@ def generate_and_evaluate(base_model, tokenizer, models, apty_data, etpc_data, o
         # Filter ETPC-generated paraphrases
         generated = [entry["Paraphrase"] for entry in paraphrases if entry["Dataset"] == "ETPC"]
 
-        # Log and skip empty paraphrases
-        for gen, ref in zip(generated, references):
+         # Log and skip empty paraphrases
+        for idx, (gen, ref) in enumerate(zip(generated, references)):
             if not gen.strip():
-                logging.warning(f"Empty paraphrase for reference: {ref}")
-        
+                logging.warning(f"Empty paraphrase for reference at index {idx}: {ref}")
+
         if len(generated) == 0:
             logging.warning(f"No paraphrases generated for model {model_suffix}")
             continue
@@ -421,7 +457,7 @@ def main():
 
     # Set batch size and number of examples
     batch_size = 10  
-    num_examples = 1000  
+    num_examples = 1000 
 
     # Ensure that num_examples is divisible by batch_size
     if num_examples % batch_size != 0:
