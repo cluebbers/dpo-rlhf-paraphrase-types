@@ -1,10 +1,12 @@
 #!/bin/sh
-#SBATCH --job-name=paraphrase_cls
+#SBATCH --job-name=para_cls
 #SBATCH --account=luebbers_masters
 #SBATCH --partition=gpu
-#SBATCH -t 12:00:00
+#SBATCH -t 2:00:00
+#SBATCH --gpus RTX5000:1
+#SBATCH --mem=32G
 #SBATCH -n 1
-#SBATCH --gpus 1
+#SBATCH --nodes=1
 #SBATCH -c 1
 #SBATCH --mail-type=all              # send mail when job begins and ends
 #SBATCH --mail-user=c.luebbers@stud.uni-goettingen.de 
@@ -34,19 +36,14 @@ echo "Current environment: $(which python)"
 echo $PATH
 
 # Set PYTHONPATH to point to the correct site-packages directory
-export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/unsloth_env/lib/python3.11/site-packages:$PYTHONPATH
+export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/wahle_env/lib/python3.10/site-packages:$PYTHONPATH
 
 export TOKENIZERS_PARALLELISM=false
 
 python3 src/finetune_detection.py --model_name $1 --task_name $2 --dataset_name $3
 
 # done
-# sbatch slurm_cls.sh bert-base-uncased paraphrase-type-detection jpwahle/etpc
-# sbatch slurm_cls.sh bert-base-uncased paraphrase-detection jpwahle/etpc
-# sbatch slurm_cls.sh microsoft/deberta-base paraphrase-type-detection jpwahle/etpc
-# sbatch slurm_cls.sh microsoft/deberta-base paraphrase-detection jpwahle/etpc
-# sbatch slurm_cls.sh FacebookAI/roberta-base paraphrase-type-detection jpwahle/etpc
-# sbatch slurm_cls.sh FacebookAI/roberta-base paraphrase-detection jpwahle/etpc
+
 #TODO
-# sbatch slurm_cls.sh nghuyong/ernie-2.0-large-en paraphrase-type-detection jpwahle/etpc
-# sbatch slurm_cls.sh nghuyong/ernie-2.0-large-en paraphrase-detection jpwahle/etpc
+# sbatch slurm_cls.sh microsoft/deberta-v3-large paraphrase-type-detection jpwahle/etpc
+# sbatch slurm_cls.sh microsoft/deberta-base paraphrase-type-detection jpwahle/etpc

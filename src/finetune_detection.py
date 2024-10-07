@@ -18,6 +18,7 @@ from transformers import (
 
 nlp = spacy.load("en_core_web_sm")
 
+
 # Groups
 grouped_types = {
     "Morphology-based changes": [
@@ -512,42 +513,6 @@ def main():
             label2id=label2cls_id,
         ).to(args.device)
 
-    elif args.task_name == "paraphrase-detection":
-        # Tokenize the dataset
-        dataset_tokenized = dataset.map(
-            tokenize_fn,
-            batched=True,
-            fn_kwargs={
-                "sentence1_key": sentence1_key,
-                "sentence2_key": sentence2_key,
-                "tokenizer": tokenizer,
-            },
-        )
-
-        # Train test split
-        train, test = split_dataset_binary(dataset_tokenized)
-
-        # Create model
-        model = AutoModelForSequenceClassification.from_pretrained(
-            args.model_name,
-            num_labels=2,
-            id2label={0: "no_paraphrase", 1: "paraphrase"},
-            label2id={"no_paraphrase": 0, "paraphrase": 1},
-        ).to(args.device)
-
-        # Define metric
-        metric = evaluate.load("f1")
-
-        def compute_metrics_binary(eval_pred):
-            logits, labels = eval_pred
-            predictions = np.argmax(logits, axis=-1)
-            return metric.compute(
-                predictions=predictions, references=labels, average="micro"
-            )
-
-        # Set metric
-        compute_metrics = compute_metrics_binary
-
     else:
         raise NotImplementedError(f"Task {args.task_name} not implemented.")
 
@@ -558,16 +523,10 @@ def main():
     # Training arguments
     training_args = TrainingArguments(
         output_dir=f"./out/cls-models/{sanitized_model_name}_{sanitized_dataset_name}_{args.task_name}",
-        learning_rate=2e-5,
         per_device_train_batch_size=4,
-        per_device_eval_batch_size=8,
-        num_train_epochs=3,
-        weight_decay=0.01,
-        evaluation_strategy="epoch",
-        save_strategy="epoch",
-        load_best_model_at_end=True,
-        report_to=None,
-        use_mps_device=args.device == "mps",
+        per_device_eval_batch_size=4,
+        gradient_accumulation_steps=4,
+        fp16=True,
     )
 
     # Traininer object
@@ -582,9 +541,11 @@ def main():
     )
 
     # Training
+    print("Starting training")
     trainer.train()
 
     # Evaluation
+    print("Starting evaluation")
     results = trainer.evaluate()
     print("#" * 20)
     print(args.model_name)
