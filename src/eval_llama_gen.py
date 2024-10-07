@@ -434,7 +434,6 @@ def main():
     # Load datasets, limiting ETPC data to num_examples
     apty_data = read_sentences_from_files("out/basesentences")
     etpc_data = load_data("out/generation_etpc_test.jsonl", num_examples=num_examples)
-    #TODO qqp_data = load_data("out/generation_qqp_test.jsonl", num_examples=num_examples)
 
     # Load base model and tokenizer once
     base_model, tokenizer = load_model_and_tokenizer(args.model_name)
