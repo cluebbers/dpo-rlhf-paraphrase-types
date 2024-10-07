@@ -1,7 +1,14 @@
 """
-python src/dpo_generation.py \
+python src/dpo_llama_gen_unsloth.py \
  --model_name=meta-llama/Llama-2-7b-hf \
- --adapter_dir=llama/llama-7b-etpc
+ --adapter_dir=out/gen-models/llama-7b-etpc
+ 
+python src/dpo_llama_gen_unsloth.py \
+ --model_name=meta-llama/Llama-3.1-8B \
+ --adapter_dir=out/gen-models/llama3.1-8b-etpc
+ 
+python src/dpo_llama_gen_unsloth.py \
+ --model_name=out/gen-models/llama3.1-8b-etpc
 """
 
 import argparse
@@ -56,7 +63,7 @@ def parse_arguments():
     parser.add_argument("--beta", type=float, default=0.1, help="Beta parameter for DPOTrainer")
     parser.add_argument("--max_length", type=int, default=1024, help="Maximum sequence length")
     parser.add_argument("--max_prompt_length", type=int, default=512, help="Maximum prompt length")
-    parser.add_argument("--adapter_dir", type=str, default="llama/llama-7b-etpc", help="Directory of the PEFT adapter")
+    parser.add_argument("--adapter_dir", type=str, default=None, help="Directory of the PEFT adapter")
     return parser.parse_args()
 
 def load_and_prepare_model(model_name, adapter_dir):
@@ -278,9 +285,7 @@ def main(
     torch.cuda.empty_cache()  # Clear GPU cache before starting
 
     # Load model and tokenizer
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    adapter_dir = os.path.join(script_dir, args.adapter_dir)
-    model, tokenizer = load_and_prepare_model(args.model_name, adapter_dir)
+    model, tokenizer = load_and_prepare_model(args.model_name, args.adapter_dir)
                                               
     # Load dataset from JSONL files
     train_json_path = "out/generation_apty_ranked_train.jsonl"
