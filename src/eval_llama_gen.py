@@ -210,13 +210,17 @@ def generate_paraphrases(
             )
 
         # Decode generated paraphrases
-        for output in outputs:
+        for idx, output in enumerate(outputs):
             generated_tokens = output[input_token_len:]
             paraphrase = tokenizer.decode(generated_tokens, skip_special_tokens=True).strip()
-            # Log and track empty paraphrases
-            if not paraphrase:
-                logging.warning(f"Empty paraphrase generated for input: {prompts[outputs.index(output)]}")
+
             paraphrases.append(paraphrase)
+
+        # After generating all paraphrases in a batch
+        for idx, paraphrase in enumerate(paraphrases[-len(outputs):]):  # Only log for the current batch
+            if not paraphrase:
+                logging.warning(f"Empty paraphrase generated for input at index {i + idx}: {prompts[idx]}")
+
 
         logging.debug(f"Generated {len(outputs)} paraphrases in batch {i // batch_size + 1}")
         progress_bar.update(1)
@@ -457,7 +461,7 @@ def main():
 
     # Set batch size and number of examples
     batch_size = 10  
-    num_examples = 1000 
+    num_examples = 100
 
     # Ensure that num_examples is divisible by batch_size
     if num_examples % batch_size != 0:
