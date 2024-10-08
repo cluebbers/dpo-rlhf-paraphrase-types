@@ -322,60 +322,33 @@ def process_model_generation(
     tokenizer: PreTrainedTokenizerBase, 
     apty_data: Dict[str, List[str]], 
     etpc_data: List[Dict[str, Any]], 
-    adapter_dir: Optional[str], 
+    adapter_dir: Optional[str],  # You can remove this as well if you don't need it here.
     model_suffix: str, 
     batch_size: int
 ) -> List[Dict[str, str]]:
     """
-    Generate paraphrases for both ETPC and APTY datasets using the provided model and adapter.
+    Generate paraphrases for both ETPC and APTY datasets using the provided model.
 
     Args:
-        model (PreTrainedModel): Loaded base model.
+        model (PreTrainedModel): Loaded model (with or without adapter already applied).
         tokenizer (PreTrainedTokenizerBase): Loaded tokenizer.
         apty_data (Dict[str, List[str]]): Dictionary of paraphrase types and sentences for APTY dataset.
         etpc_data (List[Dict[str, Any]]): List of entries to generate paraphrases for ETPC dataset.
-        adapter_dir (str): Path to the PEFT adapter to apply.
+        adapter_dir (Optional[str]): This argument can be removed if not needed.
         model_suffix (str): Suffix to use for identifying the model type (base, etpc, dpo).
         batch_size (int): Batch size to use for generation.
 
     Returns:
         List[Dict[str, str]]: List of dictionaries containing generated paraphrases.
     """
-    
-    adapter_name = os.path.basename(adapter_dir) if adapter_dir else "base"
-
-    # Check if the adapter is already loaded
-    if adapter_name not in loaded_adapters:
-        if adapter_dir:
-            try:
-                # Load and set the adapter
-                logging.info(f"Loading PEFT adapter from {adapter_dir}")
-                model.load_adapter(adapter_dir, adapter_name=adapter_name)
-                model.set_adapter(adapter_name)
-                loaded_adapters.add(adapter_name)
-                logging.info(f"Adapter '{adapter_name}' activated successfully.")
-            except Exception as e:
-                logging.error(f"Failed to load or activate adapter: {e}")
-                raise
-        else:
-            logging.info("No adapter specified. Using base model.")
-    else:
-        # Set the adapter if it's already loaded
-        model.set_adapter(adapter_name)
-        logging.info(f"Using already loaded adapter: {adapter_name}")
 
     all_paraphrases = []
 
     # Generate paraphrases for APTY dataset
     for paraphrase_type, sentences in apty_data.items():
         paraphrases = generate_paraphrases(model, tokenizer, sentences, "apty", paraphrase_type, batch_size=batch_size)
-        
-        # Log each paraphrase and its original sentence
-        for idx, paraphrase in enumerate(paraphrases):
-            if not paraphrase.strip():
-                logging.warning(f"Empty paraphrase generated for APTY sentence at index {idx}: {sentences[idx]}")
-            
-            
+
+        # Log and save paraphrases
         all_paraphrases.extend([{
             "Original": sentence,
             "APT": paraphrase_type,
@@ -388,12 +361,8 @@ def process_model_generation(
     etpc_paraphrases = generate_paraphrases(model, tokenizer, etpc_data, "etpc", batch_size=batch_size)
     for index, paraphrase in enumerate(etpc_paraphrases):
         full_content = etpc_data[index]["messages"][0]["content"]
-        
-        if not paraphrase.strip():
-            logging.warning(f"Empty paraphrase for ETPC content at index {index}: {full_content}")
 
-
-        # Safely extract the sentence and paraphrase types from the ETPC content
+        # Extract sentence and paraphrase type for logging
         if "Sentence:" in full_content and "Paraphrase Types:" in full_content:
             original_sentence = full_content.split("Sentence:")[1].split("Paraphrase Types:")[0].strip()
             paraphrase_types = full_content.split("Paraphrase Types:")[1].strip()
@@ -410,6 +379,7 @@ def process_model_generation(
         })
 
     return all_paraphrases
+
 
 def generate_and_evaluate(base_model, tokenizer, models, apty_data, etpc_data, output_csv, output_json, batch_size):
     """
@@ -463,7 +433,7 @@ def main():
 
     # Set batch size and number of examples
     batch_size = 10  
-    num_examples = 1000
+    num_examples = 100
 
     # Ensure that num_examples is divisible by batch_size
     if num_examples % batch_size != 0:

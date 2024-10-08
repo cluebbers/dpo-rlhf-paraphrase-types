@@ -16,6 +16,7 @@ from transformers import (
     TrainingArguments,
     DataCollatorWithPadding,
 )
+import random
 
 def write_results_to_csv(results, detailed_report, output_file="evaluation_results.csv"):
     print(f"Writing results to {output_file}...")
@@ -122,8 +123,9 @@ def parse_args():
     print("Parsing command line arguments...")
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="microsoft/deberta-base", help="Name of the model to use")
+    parser.add_argument("--max_samples_per_class", type=int, default=100, help="Maximum samples per class for downsampling")
     args = parser.parse_args()
-    print(f"Arguments parsed: model_name={args.model_name}")
+    print(f"Arguments parsed: model_name={args.model_name}, max_samples_per_class={args.max_samples_per_class}")
     return args
 
 def compute_metrics(p, cls_id2label):
@@ -189,6 +191,38 @@ def split_dataset_by_type(dataset, train_percent=0.8):
     print(f"Dataset split completed. Train size: {len(train_dataset)}, Test size: {len(test_dataset)}")
     return train_dataset, test_dataset
 
+def downsample_dataset(dataset, label_column, max_samples_per_class):
+    """
+    Downsample overrepresented classes in the dataset.
+    
+    Args:
+    - dataset: The dataset to downsample.
+    - label_column: The name of the column containing class labels.
+    - max_samples_per_class: Maximum number of samples per class after downsampling.
+    
+    Returns:
+    - downsampled_dataset: The downsampled dataset.
+    """
+    print("Downsampling overrepresented classes...")
+
+    # Group examples by their paraphrase type
+    class_groups = {label: [] for label in set([ptype for ptypes in dataset[label_column] for ptype in ptypes])}
+    for example in dataset:
+        for label in example[label_column]:
+            class_groups[label.strip().lower()].append(example)
+
+    # Downsample overrepresented classes
+    downsampled_data = []
+    for label, examples in class_groups.items():
+        if len(examples) > max_samples_per_class:
+            downsampled_data.extend(random.sample(examples, max_samples_per_class))
+        else:
+            downsampled_data.extend(examples)
+
+    downsampled_dataset = Dataset.from_list(downsampled_data)
+    print(f"Downsampling complete. Final dataset size: {len(downsampled_dataset)}")
+    return downsampled_dataset
+
 def main():
     args = parse_args()
 
@@ -234,6 +268,11 @@ def main():
         },
     )
     print("Dataset tokenized.")
+
+    # Downsample the dataset to address class imbalance
+    print("Downsampling dataset...")
+    max_samples_per_class = args.max_samples_per_class  # Control this from command-line
+    dataset_tokenized = downsample_dataset(dataset_tokenized, 'paraphrase_types', max_samples_per_class)
 
     # Split the dataset into training and testing sets
     train_dataset, test_dataset = split_dataset_by_type(dataset_tokenized)
