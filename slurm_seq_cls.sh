@@ -15,7 +15,7 @@
 
 module load miniforge3
 module load cuda
-source activate wahle_env
+source activate dpo_env
 
 # Printing out some info.
 echo "Submitting job with sbatch from directory: ${SLURM_SUBMIT_DIR}"
@@ -24,8 +24,6 @@ echo "Working directory: $PWD"
 echo "Current node: ${SLURM_NODELIST}"
 
 echo "Model: $1"
-echo "Task: $2"
-echo "Dataset: $3"
 
 # For debugging purposes.
 python --version
@@ -40,10 +38,10 @@ export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/wahle_env/lib/py
 
 export TOKENIZERS_PARALLELISM=false
 
-python3 src/seq-cls.py --model_name $1 --task_name $2 --dataset_name $3
+python3 src/seq-cls.py --model_name $1 
 
 # done
 
 #TODO
-# sbatch slurm_seq_cls.sh microsoft/deberta-v3-large paraphrase-type-detection jpwahle/etpc
-# sbatch slurm_seq_cls.sh microsoft/deberta-base paraphrase-type-detection jpwahle/etpc
+# sbatch slurm_seq_cls.sh microsoft/deberta-v3-large
+# sbatch slurm_seq_cls.sh microsoft/deberta-basesbatch slurm_seq_cls.sh microsoft/deberta-base

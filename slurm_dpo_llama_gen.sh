@@ -47,7 +47,7 @@ python3 src/dpo_llama_gen.py --model_name $1 --adapter_dir $2 --loss_type $3
 # sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-2-13b-hf out/gen-models/llama-13b-etpc ipo
 
 #TODO
-# sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-3.1-8b out/gen-models/llama-3.1-8b-etpc sigmoid
-# sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-3.1-8b out/gen-models/llama-3.1-8b-etpc ipo
+# sbatch slurm_dpo_llama_gen.sh out/gen-models/llama-3.1-8b-etpc None sigmoid
+# sbatch slurm_dpo_llama_gen.sh out/gen-models/llama-3.1-8b-etpc None ipo
 # sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-3.1-70b out/gen-models/llama-3.1-70b-etpc sigmoid
 # sbatch slurm_dpo_llama_gen.sh meta-llama/Llama-3.1-70b out/gen-models/llama-3.1-70b-etpc ipo

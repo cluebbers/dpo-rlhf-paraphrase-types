@@ -143,6 +143,8 @@ def load_model_and_tokenizer(model_name: str, adapter_dir: Optional[str] = None)
 
     # Load the adapter if specified
     if adapter_dir:
+        # Clear any existing PEFT adapters before loading a new one
+        PeftModel.clear_adapters()  # Clear any existing PEFT adapters before loading a new one
         logging.info(f"Loading PEFT adapter from {adapter_dir}")
         peft_config = PeftConfig.from_pretrained(adapter_dir)
         model = PeftModel.from_pretrained(model, adapter_dir, config=peft_config)
@@ -461,7 +463,7 @@ def main():
 
     # Set batch size and number of examples
     batch_size = 10  
-    num_examples = 100
+    num_examples = 1000
 
     # Ensure that num_examples is divisible by batch_size
     if num_examples % batch_size != 0:

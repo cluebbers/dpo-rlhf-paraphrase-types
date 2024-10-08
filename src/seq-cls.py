@@ -1,9 +1,12 @@
 import argparse
+import os
 import torch
-import xml.etree.ElementTree as ET
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
-import numpy as np
+import csv
 import requests
+import torch.nn as nn
+import xml.etree.ElementTree as ET
+import numpy as np
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
 from datasets import load_dataset, Dataset
 from transformers import (
     AutoConfig,
@@ -13,8 +16,33 @@ from transformers import (
     TrainingArguments,
     DataCollatorWithPadding,
 )
-import torch.nn as nn
 
+def write_results_to_csv(results, detailed_report, output_file="evaluation_results.csv"):
+    print(f"Writing results to {output_file}...")
+    with open(output_file, mode="w", newline="") as file:
+        writer = csv.writer(file)
+        
+        # Write the overall metrics
+        writer.writerow(["Metric", "Value"])
+        for key, value in results.items():
+            if key != 'detailed_report':  # Skip the detailed report for now
+                writer.writerow([key, value])
+        
+        # Leave a line before detailed report
+        writer.writerow([])
+
+        # Write detailed classification report
+        if detailed_report:
+            writer.writerow(["Label", "Precision", "Recall", "F1-Score", "Support"])
+            for label, metrics in detailed_report.items():
+                precision = metrics.get("precision", 0)
+                recall = metrics.get("recall", 0)
+                f1_score = metrics.get("f1-score", 0)
+                support = metrics.get("support", 0)
+                writer.writerow([label, precision, recall, f1_score, support])
+    
+    print(f"Results successfully written to {output_file}.")
+    
 def download_paraphrase_types_xml():
     print("Downloading paraphrase types XML...")
     url = "https://raw.githubusercontent.com/venelink/ETPC/master/Corpus/paraphrase_types.xml"
@@ -285,6 +313,15 @@ def main():
             print(f"Label: {label}")
             for metric, value in metrics.items():
                 print(f"  {metric}: {value}")
+    
+    # Ensure directory for output exists
+    output_file = f"eval_{args.model_name.replace('/', '_')}_etpc_seq-cls_results.csv"
+    output_dir = os.path.dirname(output_file)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    # Write results to CSV
+    write_results_to_csv(results, detailed_report, output_file=output_file)
 
 if __name__ == "__main__":
     main()

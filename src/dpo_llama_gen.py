@@ -33,7 +33,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--adapter_dir",
         type=str,
-        default="out/gen-models/llama-7b-etpc",
+        default=None,
         help="Name of the PEFT adapter",
     )
     parser.add_argument(
@@ -42,7 +42,13 @@ def parse_arguments() -> argparse.Namespace:
         default="sigmoid",
         help="Loss type",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    # Convert the string "None" to actual None
+    if args.adapter_dir == "None":
+        args.adapter_dir = None
+
+    return args
 
 
 def login_to_huggingface(token_path="token_file.txt"):
@@ -83,14 +89,17 @@ def load_model_and_tokenizer(model_name, adapter_dir, device):
 
     # Load model and tokenizer
     model = AutoModelForCausalLM.from_pretrained(model_name, quantization_config=bnb_config)
-    tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left")
+    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B", padding_side="left")
     tokenizer.pad_token = tokenizer.eos_token
     
     # Load and attach PEFT adapter
-    logging.info(f"Loading PEFT adapter from {adapter_dir}")
-    peft_config = PeftConfig.from_pretrained(adapter_dir)
-    peft_config.base_model_name_or_path = model_name
-    model = PeftModel.from_pretrained(model, adapter_dir, config=peft_config)
+    if adapter_dir:
+        logging.info(f"Loading PEFT adapter from {adapter_dir}")
+        peft_config = PeftConfig.from_pretrained(adapter_dir)
+        peft_config.base_model_name_or_path = model_name
+        model = PeftModel.from_pretrained(model, adapter_dir, config=peft_config)
+    else:
+        logging.info("No adapter_dir provided. Loading base model only.")
 
     # Load the reference adapter
     model.load_adapter(adapter_dir, adapter_name="reference")

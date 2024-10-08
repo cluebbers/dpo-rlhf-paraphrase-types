@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --job-name=eval_dpo_llama_gen
+#SBATCH --job-name=eval_llama_gen
 #SBATCH --account=luebbers_masters
 #SBATCH --partition=gpu
 #SBATCH -t 12:00:00
