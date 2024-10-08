@@ -44,4 +44,4 @@ python3 src/seq-cls.py --model_name $1
 
 #TODO
 # sbatch slurm_seq_cls.sh microsoft/deberta-v3-large
-# sbatch slurm_seq_cls.sh microsoft/deberta-basesbatch slurm_seq_cls.sh microsoft/deberta-base
+# sbatch slurm_seq_cls.sh microsoft/deberta-base

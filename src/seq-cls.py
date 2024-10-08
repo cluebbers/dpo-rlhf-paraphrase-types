@@ -315,10 +315,13 @@ def main():
                 print(f"  {metric}: {value}")
     
     # Ensure directory for output exists
-    output_file = f"eval_{args.model_name.replace('/', '_')}_etpc_seq-cls_results.csv"
+    output_file = f".out/eval_{args.model_name.replace('/', '_')}_etpc_seq-cls_results.csv"
     output_dir = os.path.dirname(output_file)
-    if not os.path.exists(output_dir):
+
+    # Only create the directory if output_dir is not empty
+    if output_dir and not os.path.exists(output_dir):
         os.makedirs(output_dir)
+
 
     # Write results to CSV
     write_results_to_csv(results, detailed_report, output_file=output_file)

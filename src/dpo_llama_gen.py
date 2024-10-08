@@ -4,7 +4,7 @@ import torch
 import os
 from datasets import load_dataset, DatasetDict
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-from peft import PeftModel, PeftConfig
+from peft import PeftModel, PeftConfig, LoraConfig
 from trl import DPOTrainer, DPOConfig
 from huggingface_hub import login
 
@@ -68,20 +68,6 @@ def login_to_huggingface(token_path="token_file.txt"):
     
      
 def load_model_and_tokenizer(model_name, adapter_dir, device):
-    """
-    Load the model, tokenizer, and the PEFT adapter.
-
-    This function loads the specified model and tokenizer, and then applies the PEFT adapter.
-    It also sets the model to training mode and moves it to the specified device.
-
-    Args:
-        model_name (str): Name of the model to load.
-        adapter_dir (str): Path to the PEFT adapter.
-        device (torch.device): Device to move the model to.
-
-    Returns:
-        tuple: The loaded model and tokenizer.
-    """
     logging.info(f"Loading model and tokenizer for {model_name}")
     
     # Configure for 4-bit quantization
@@ -91,25 +77,37 @@ def load_model_and_tokenizer(model_name, adapter_dir, device):
     model = AutoModelForCausalLM.from_pretrained(model_name, quantization_config=bnb_config)
     tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B", padding_side="left")
     tokenizer.pad_token = tokenizer.eos_token
-    
-    # Load and attach PEFT adapter
-    if adapter_dir:
+
+    # If no adapter_dir is provided, create a new adapter configuration using LoRA
+    if adapter_dir is None:
+        logging.info("No adapter_dir provided. Adding a new LoRA adapter.")
+        # Define a simple LoRA configuration
+        peft_config = LoraConfig(
+            r=16,  # Rank for LoRA matrices
+            lora_alpha=32,  # Alpha scaling
+            target_modules=["q_proj", "v_proj"],  # Apply LoRA to these layers
+            lora_dropout=0.05,
+            bias="none"
+        )
+        model = PeftModel(model, peft_config)
+    else:
+        # Load and attach PEFT adapter if provided
         logging.info(f"Loading PEFT adapter from {adapter_dir}")
         peft_config = PeftConfig.from_pretrained(adapter_dir)
         peft_config.base_model_name_or_path = model_name
         model = PeftModel.from_pretrained(model, adapter_dir, config=peft_config)
-    else:
-        logging.info("No adapter_dir provided. Loading base model only.")
 
-    # Load the reference adapter
-    model.load_adapter(adapter_dir, adapter_name="reference")
+        # Load the reference adapter
+        model.load_adapter(adapter_dir, adapter_name="reference")
 
-    # Set the model to training mode and move it to the specified device
-    model.train()
-    model.to(device)
+    # If using 4-bit quantization, do not manually move the model to the device
+    if not bnb_config.load_in_4bit:
+        model.to(device)
+
     torch.cuda.empty_cache()
 
     return model, tokenizer
+
 
 
 def load_datasets(train_file: str, eval_file: str) -> DatasetDict:
