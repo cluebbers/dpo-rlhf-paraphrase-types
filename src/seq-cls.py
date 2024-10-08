@@ -315,7 +315,7 @@ def main():
                 print(f"  {metric}: {value}")
     
     # Ensure directory for output exists
-    output_file = f".out/eval_{args.model_name.replace('/', '_')}_etpc_seq-cls_results.csv"
+    output_file = f"out/eval_{args.model_name.replace('/', '_')}_etpc_seq-cls_results.csv"
     output_dir = os.path.dirname(output_file)
 
     # Only create the directory if output_dir is not empty
