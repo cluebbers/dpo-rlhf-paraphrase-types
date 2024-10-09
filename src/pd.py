@@ -161,7 +161,7 @@ def main():
 
     # Save results to CSV
     results_df = pd.DataFrame([results])
-    results_df.to_csv(f"{args.model_name.split('/')[-1]}-qqp-pd-results.csv", index=False)
+    results_df.to_csv(f"out/cls-models/{args.model_name.split('/')[-1]}-qqp-pd-results.csv", index=False)
 
 if __name__ == "__main__":
     # Load metrics globally once
@@ -169,4 +169,5 @@ if __name__ == "__main__":
     precision_metric = evaluate.load("precision")
     recall_metric = evaluate.load("recall")
     f1_metric = evaluate.load("f1")
+    
     main()
