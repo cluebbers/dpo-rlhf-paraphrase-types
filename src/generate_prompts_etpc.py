@@ -50,7 +50,8 @@ def write_to_jsonl(data, filename):
                             " changes, Syntax/discourse structure changes,"
                             " Entailment, Identity, Non-paraphrase,"
                             " Addition/Deletion, Change of order,"
-                            " Semantic-based"
+                            " Semantic-based."
+                            " List the paraphrase types that differ between Sentence 1 and Sentence 2: "
                         ),
                     },
                     {
@@ -69,7 +70,7 @@ def write_to_jsonl(data, filename):
                             "Given the following sentence, generate a"
                             " paraphrase with the following types. Sentence:"
                             f" {instance['sentence1']} Paraphrase Types:"
-                            f" {', '.join(instance['paraphrase_types'])}"
+                            f" {', '.join(instance['paraphrase_types'])}. Generated Paraphrase: "
                         ),
                     },
                     {"role": "assistant", "content": instance["sentence2"]},

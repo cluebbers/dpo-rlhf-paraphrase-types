@@ -162,8 +162,8 @@ def generate_paraphrases(
     paraphrase_type: Optional[str] = None,
     temperature: float = 0.6,  
     top_p: float = 0.9,        
-    batch_size: int = 1,     
-    max_length: int = 1024,   
+    batch_size: int = 10,     
+    max_length: int = 256,   
     max_new_tokens: int = 50 
 ) -> List[str]:
     """
