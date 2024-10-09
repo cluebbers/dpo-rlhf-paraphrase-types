@@ -11,7 +11,7 @@ from transformers import (
 )
 import evaluate
 
-def tokenize_fn(examples, sentence1_key, sentence2_key, tokenizer):
+def tokenize_fn(examples, tokenizer):
     """
     Tokenizes input examples using a tokenizer.
     
@@ -25,11 +25,11 @@ def tokenize_fn(examples, sentence1_key, sentence2_key, tokenizer):
         dict: The tokenized inputs.
     """
     tokenized_inputs = tokenizer(
-        examples[sentence1_key],
-        examples[sentence2_key],
+        examples["question1"],
+        examples["question2"],
         padding="max_length",
         truncation=True,
-        max_length=512 # Limit max length for faster training
+        max_length=256 # Limit max length for faster training
     )
     tokenized_inputs["labels"] = examples["label"]
     return tokenized_inputs
@@ -69,15 +69,11 @@ def compute_metrics_binary(eval_pred):
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
     
-    accuracy = evaluate.load("accuracy")
-    precision = evaluate.load("precision")
-    recall = evaluate.load("recall")
-    f1 = evaluate.load("f1")
-
-    accuracy_score = accuracy.compute(predictions=predictions, references=labels)
-    precision_score = precision.compute(predictions=predictions, references=labels, average="binary")
-    recall_score = recall.compute(predictions=predictions, references=labels, average="binary")
-    f1_score = f1.compute(predictions=predictions, references=labels, average="binary")
+    # Access global metrics
+    accuracy_score = accuracy_metric.compute(predictions=predictions, references=labels)
+    precision_score = precision_metric.compute(predictions=predictions, references=labels, average="binary")
+    recall_score = recall_metric.compute(predictions=predictions, references=labels, average="binary")
+    f1_score = f1_metric.compute(predictions=predictions, references=labels, average="binary")
     
     return {
         "accuracy": accuracy_score["accuracy"],
@@ -89,9 +85,6 @@ def compute_metrics_binary(eval_pred):
 def main():
     args = parse_args()
 
-    # Load the QQP dataset
-    dataset = load_dataset("glue", "qqp")
-
     # Initialize tokenizer and model
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
     model = AutoModelForSequenceClassification.from_pretrained(
@@ -101,32 +94,37 @@ def main():
         label2id={"no_paraphrase": 0, "paraphrase": 1},
     ).to(args.device)
 
-    # Define sentence keys for QQP
-    sentence1_key = "question1"
-    sentence2_key = "question2"
+    # Load the QQP dataset
+    dataset = load_dataset("glue", "qqp")
+        
+    # Select a smaller subset of the dataset
+    train_dataset = dataset["train"].shuffle(seed=42).select(range(10000))  # Select 10,000 samples for training
+    val_dataset = dataset["validation"].shuffle(seed=42).select(range(1000))  # Select 1,000 samples for validation
 
-    # Tokenize the dataset
-    dataset_tokenized = dataset.map(
+    # Tokenize the subsetted datasets
+    train_dataset_tokenized = train_dataset.map(
         tokenize_fn,
         batched=True,
-        fn_kwargs={"sentence1_key": sentence1_key, "sentence2_key": sentence2_key, "tokenizer": tokenizer},
+        fn_kwargs={"tokenizer": tokenizer},
+    )
+    val_dataset_tokenized = val_dataset.map(
+        tokenize_fn,
+        batched=True,
+        fn_kwargs={"tokenizer": tokenizer},
     )
 
     # Define data collator with dynamic padding
     data_collator = DataCollatorWithPadding(tokenizer)
 
-    # Train/test split (QQP already has train/validation/test splits)
-    train_dataset = dataset_tokenized["train"]
-    val_dataset = dataset_tokenized["validation"]
-
     # Define training arguments
     # Define training arguments
     training_args = TrainingArguments(
-        output_dir=f"./out/cls-models/{args.model_name}_qqp_pd",
+        output_dir=f"./out/cls-models/{args.model_name.split('/')[-1]}_qqp_pd",
         evaluation_strategy="epoch",  # Evaluate at the end of each epoch
         save_strategy="epoch",  # Save model at the end of each epoch to match evaluation
         learning_rate=2e-5,
-        per_device_train_batch_size=8,
+        logging_steps=500,
+        per_device_train_batch_size=16,
         per_device_eval_batch_size=16,
         num_train_epochs=3,
         weight_decay=0.01,
@@ -141,8 +139,8 @@ def main():
     trainer = Trainer(
         model=model,
         args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=val_dataset,
+        train_dataset=train_dataset_tokenized,
+        eval_dataset=val_dataset_tokenized,
         tokenizer=tokenizer,
         data_collator=data_collator,
         compute_metrics=compute_metrics_binary,
@@ -151,9 +149,6 @@ def main():
     # Training
     print("Starting training...")
     trainer.train()
-    # Save the best model after training
-    trainer.save_model(output_dir=f"./out/cls-models/{args.model_name}_qqp_pd_best")
-
 
     # Evaluation on validation set
     print("Evaluating on validation set...")
@@ -166,7 +161,12 @@ def main():
 
     # Save results to CSV
     results_df = pd.DataFrame([results])
-    results_df.to_csv(f"{args.model_name}-qqp-pd-results.csv", index=False)
+    results_df.to_csv(f"{args.model_name.split('/')[-1]}-qqp-pd-results.csv", index=False)
 
 if __name__ == "__main__":
+    # Load metrics globally once
+    accuracy_metric = evaluate.load("accuracy")
+    precision_metric = evaluate.load("precision")
+    recall_metric = evaluate.load("recall")
+    f1_metric = evaluate.load("f1")
     main()
