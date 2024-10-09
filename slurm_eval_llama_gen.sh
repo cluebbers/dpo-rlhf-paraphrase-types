@@ -42,9 +42,9 @@ export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/dpo_env/lib/pyth
 python3 src/eval_llama_gen.py --model_name $1 --etpc_dir $2 --dpo_dir $3 --ipo_dir $4
 
 #TODO
-# sbatch slurm_eval_dpo_llama_gen.sh meta-llama/Llama-2-7b-hf out/gen-models/llama-7b-etpc out/gen-models/dpo_meta-llama-Llama-2-7b-hf_sigmoid out/gen-models/dpo_meta-llama-Llama-2-7b-hf_ipo
+# sbatch slurm_eval_llama_gen.sh meta-llama/Llama-2-7b-hf out/gen-models/llama-7b-etpc out/gen-models/dpo_meta-llama-Llama-2-7b-hf_sigmoid out/gen-models/dpo_meta-llama-Llama-2-7b-hf_ipo
 # sbatch slurm_eval_dpo_llama_gen.sh meta-llama/Llama-2-13b-hf out/gen-models/llama-13b-etpc out/gen-models/dpo_meta-llama-Llama-2-13b-hf_sigmoid out/gen-models/dpo_meta-llama-Llama-2-13b-hf_ipo
 
-# sbatch slurm_eval_dpo_llama_gen.sh meta-llama/Llama-3.1-8B out/gen-models/llama-3.1-8b-etpc out/gen-models/dpo_meta-llama-Llama-3.1-8b_sigmoid out/gen-models/dpo_out-gen-models-llama-3.1-8b-etpc_ipo
-# sbatch slurm_eval_dpo_llama_gen.sh meta-llama/Llama-3.1-70B out/gen-models/llama-3.1-70b-etpc out/gen-models/dpo_meta-llama-Llama-3.1-70b_sigmoid out/gen-models/dpo_meta-llama-Llama-3.1-70b_ipo
+# sbatch slurm_eval_llama_gen.sh meta-llama/Llama-3.1-8B out/gen-models/llama-3.1-8b-etpc out/gen-models/dpo_meta-llama-Llama-3.1-8b_sigmoid out/gen-models/dpo_out-gen-models-llama-3.1-8b-etpc_ipo
+# sbatch slurm_eval_llama_gen.sh meta-llama/Llama-3.1-70B out/gen-models/llama-3.1-70b-etpc out/gen-models/dpo_meta-llama-Llama-3.1-70b_sigmoid out/gen-models/dpo_meta-llama-Llama-3.1-70b_ipo
 

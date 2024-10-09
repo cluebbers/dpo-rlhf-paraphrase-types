@@ -70,8 +70,6 @@ def load_data(filename, num_examples=None):
     logging.info(f"Loaded {len(data)} examples from {filename}")
     return data
 
-import chardet  # Make sure chardet is imported
-
 def read_sentences_from_files(data_dir):
     """Reads base sentences and paraphrase types from text files.
 
@@ -163,7 +161,7 @@ def generate_paraphrases(
     temperature: float = 0.6,  
     top_p: float = 0.9,        
     batch_size: int = 1,     
-    max_length: int = 512,   
+    max_length: int = 1024,   
     max_new_tokens: int = 50 
 ) -> List[str]:
     """
@@ -293,10 +291,10 @@ def save_metrics_to_csv(metrics, output_csv):
         metrics (list): List of dictionaries containing evaluation metrics.
         output_csv (str): Path to the output CSV file.
     """
-    fieldnames = ["Model", "Adapter", "ROUGE-1", "ROUGE-2", "ROUGE-L", "BLEU"]
+   # fieldnames = ["Model", "Adapter", "ROUGE-1", "ROUGE-2", "ROUGE-L", "BLEU"]
 
     # Use pandas to write the CSV file
-    pd.DataFrame(metrics).to_csv(output_csv, index=False, header=fieldnames)
+    pd.DataFrame(metrics).to_csv(output_csv, index=False)
 
     logging.info(f"Evaluation metrics saved to {output_csv}")
     
@@ -314,15 +312,11 @@ def save_paraphrases_to_json(paraphrases, output_file):
         json.dump(paraphrases, file, ensure_ascii=False, indent=4)
     logging.info(f"Paraphrases saved to {output_file}")
     
-# Track loaded adapters globally
-loaded_adapters = set()
-
 def process_model_generation(
     model: PreTrainedModel, 
     tokenizer: PreTrainedTokenizerBase, 
     apty_data: Dict[str, List[str]], 
     etpc_data: List[Dict[str, Any]], 
-    adapter_dir: Optional[str],  # You can remove this as well if you don't need it here.
     model_suffix: str, 
     batch_size: int
 ) -> List[Dict[str, str]]:
@@ -353,7 +347,7 @@ def process_model_generation(
             "Original": sentence,
             "APT": paraphrase_type,
             "Paraphrase": paraphrase,
-            "Kind": model_suffix,
+            "Model": model_suffix,
             "Dataset": "APTY"
         } for sentence, paraphrase in zip(sentences, paraphrases)])
 
@@ -374,7 +368,7 @@ def process_model_generation(
             "Original": original_sentence,
             "APT": paraphrase_types,
             "Paraphrase": paraphrase,
-            "Kind": model_suffix,
+            "Model": model_suffix,
             "Dataset": "ETPC"
         })
 
@@ -433,7 +427,7 @@ def main():
 
     # Set batch size and number of examples
     batch_size = 10  
-    num_examples = 100
+    num_examples = 10
 
     # Ensure that num_examples is divisible by batch_size
     if num_examples % batch_size != 0:
