@@ -120,9 +120,11 @@ def main():
     val_dataset = dataset_tokenized["validation"]
 
     # Define training arguments
+    # Define training arguments
     training_args = TrainingArguments(
-        output_dir=f"./out/cls-models/{args.model_name}-qqp-pd",
+        output_dir=f"./out/cls-models/{args.model_name}_qqp_pd",
         evaluation_strategy="epoch",  # Evaluate at the end of each epoch
+        save_strategy="epoch",  # Save model at the end of each epoch to match evaluation
         learning_rate=2e-5,
         per_device_train_batch_size=8,
         per_device_eval_batch_size=16,
@@ -133,6 +135,7 @@ def main():
         load_best_model_at_end=True,  # Load the best model after training
         fp16=True,  # Use mixed precision training
     )
+
 
     # Create Trainer object
     trainer = Trainer(
@@ -148,6 +151,9 @@ def main():
     # Training
     print("Starting training...")
     trainer.train()
+    # Save the best model after training
+    trainer.save_model(output_dir=f"./out/cls-models/{args.model_name}_qqp_pd_best")
+
 
     # Evaluation on validation set
     print("Evaluating on validation set...")
