@@ -3,7 +3,7 @@
 #SBATCH --account=luebbers_masters
 #SBATCH --partition=gpu
 #SBATCH -t 2:00:00
-#SBATCH --gpus RTX5000:1
+#SBATCH --gpus 1
 #SBATCH --mem=32G
 #SBATCH -n 1
 #SBATCH --nodes=1

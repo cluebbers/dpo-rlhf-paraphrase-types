@@ -38,12 +38,15 @@ echo $PATH
 export TOKENIZERS_PARALLELISM=false
 # Set PYTHONPATH to point to the correct site-packages directory
 export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/dpo_env/lib/python3.10/site-packages:$PYTHONPATH
+# store HF models on scratch
+export HF_HOME=/scratch1/users/u12246/huggingface_cache
+
 
 python3 src/eval_llama_gen.py --model_name $1 --etpc_dir $2 --dpo_dir $3 --ipo_dir $4
 
 #TODO
 # sbatch slurm_eval_llama_gen.sh meta-llama/Llama-2-7b-hf out/gen-models/llama-7b-etpc out/gen-models/dpo_meta-llama-Llama-2-7b-hf_sigmoid out/gen-models/dpo_meta-llama-Llama-2-7b-hf_ipo
-# sbatch slurm_eval_dpo_llama_gen.sh meta-llama/Llama-2-13b-hf out/gen-models/llama-13b-etpc out/gen-models/dpo_meta-llama-Llama-2-13b-hf_sigmoid out/gen-models/dpo_meta-llama-Llama-2-13b-hf_ipo
+# sbatch slurm_eval_llama_gen.sh meta-llama/Llama-2-13b-hf out/gen-models/llama-13b-etpc out/gen-models/dpo_meta-llama-Llama-2-13b-hf_sigmoid out/gen-models/dpo_meta-llama-Llama-2-13b-hf_ipo
 
 # sbatch slurm_eval_llama_gen.sh meta-llama/Llama-3.1-8B out/gen-models/llama-3.1-8b-etpc out/gen-models/dpo_meta-llama-Llama-3.1-8b_sigmoid out/gen-models/dpo_out-gen-models-llama-3.1-8b-etpc_ipo
 # sbatch slurm_eval_llama_gen.sh meta-llama/Llama-3.1-70B out/gen-models/llama-3.1-70b-etpc out/gen-models/dpo_meta-llama-Llama-3.1-70b_sigmoid out/gen-models/dpo_meta-llama-Llama-3.1-70b_ipo

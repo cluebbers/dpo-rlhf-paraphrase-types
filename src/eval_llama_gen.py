@@ -135,9 +135,11 @@ def load_model_and_tokenizer(model_name: str, adapter_dir: Optional[str] = None)
         logging.info("Adding a padding token ('<pad>') to the tokenizer.")
         tokenizer.add_special_tokens({"pad_token": "<pad>"})
         model.resize_token_embeddings(len(tokenizer))  # Resize embeddings to match the new vocabulary size
-
+    # After adding, ensure that pad_token_id is set
+    assert tokenizer.pad_token_id is not None, "Padding token should be added and tokenizer's pad_token_id should not be None."
+    
     # Set the model's padding token ID to the new padding token
-    model.config.pad_token_id = tokenizer.pad_token_id
+    model.config.pad_token_id = tokenizer.pad_token_id or model.config.eos_token_id
 
     # Load the adapter if specified
     if adapter_dir:
@@ -389,7 +391,7 @@ def generate_and_evaluate(base_model, tokenizer, models, apty_data, etpc_data, o
         # Extract the adapter name from the adapter_dir (e.g., 'llama-7b-etpc')
         adapter_name = os.path.basename(adapter_dir) if adapter_dir else "base"
 
-        paraphrases = process_model_generation(base_model, tokenizer, apty_data, etpc_data, adapter_dir, model_suffix, batch_size)
+        paraphrases = process_model_generation(base_model, tokenizer, apty_data, etpc_data, model_suffix, batch_size)
         all_paraphrases.extend(paraphrases)
 
         # Filter ETPC-generated paraphrases

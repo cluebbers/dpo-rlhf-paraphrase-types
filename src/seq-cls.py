@@ -159,37 +159,61 @@ def compute_metrics(p, cls_id2label):
         'detailed_report': report
     }
 
-def split_dataset_by_type(dataset, train_percent=0.8):
-    print("Splitting dataset by paraphrase type...")
+def split_dataset_by_type(dataset, train_percent=0.8, min_samples=100, max_samples=200):
+    """
+    Split dataset by paraphrase type while ensuring each paraphrase type has 
+    at least `min_samples` and at most `max_samples` examples.
+    
+    Args:
+    - dataset: The dataset to split.
+    - train_percent: The percentage of the dataset to use for training.
+    - min_samples: Minimum number of examples per paraphrase type.
+    - max_samples: Maximum number of examples per paraphrase type.
+    
+    Returns:
+    - train_dataset: Training set.
+    - test_dataset: Test set.
+    """
+    print("Splitting dataset by paraphrase type with constraints...")
+
+    # Group examples by paraphrase types
+    paraphrase_type_to_examples = {}
+    for example in dataset:
+        paraphrase_types = example["paraphrase_types"]
+        for ptype in paraphrase_types:
+            ptype = ptype.strip().lower()
+            if ptype not in paraphrase_type_to_examples:
+                paraphrase_type_to_examples[ptype] = []
+            paraphrase_type_to_examples[ptype].append(example)
+
     train = []
     test = []
-    counts = {}
-    for paraphrase_type_list in dataset["paraphrase_types"]:
-        for paraphrase_type in paraphrase_type_list:
-            paraphrase_type_standardized = paraphrase_type.strip().lower()
-            if paraphrase_type_standardized not in counts:
-                counts[paraphrase_type_standardized] = 1
-            else:
-                counts[paraphrase_type_standardized] += 1
 
-    internal_counts = {key: 0 for key in counts}
+    for ptype, examples in paraphrase_type_to_examples.items():
+        num_examples = len(examples)
 
-    for example in dataset:
-        types = [ptype.strip().lower() for ptype in example["paraphrase_types"]]
-        if len(types) > 0:
-            par_type = min(types, key=lambda x: internal_counts[x])
-            if internal_counts[par_type] < counts[par_type] * (1 - train_percent):
-                test.append(example)
-            else:
-                train.append(example)
-            for par_type in types:
-                internal_counts[par_type] += 1
+        if num_examples < min_samples:
+            print(f"Skipping paraphrase type '{ptype}' with only {num_examples} examples (less than {min_samples}).")
+            continue
+        
+        # Limit the number of examples to max_samples
+        if num_examples > max_samples:
+            examples = random.sample(examples, max_samples)
+            num_examples = max_samples
 
+        # Split into train and test sets
+        split_idx = int(train_percent * num_examples)
+        train.extend(examples[:split_idx])
+        test.extend(examples[split_idx:])
+
+    # Convert to HuggingFace Dataset objects
     train_dataset = Dataset.from_list(train)
     test_dataset = Dataset.from_list(test)
 
     print(f"Dataset split completed. Train size: {len(train_dataset)}, Test size: {len(test_dataset)}")
     return train_dataset, test_dataset
+
+
 
 def downsample_dataset(dataset, label_column, max_samples_per_class):
     """
@@ -274,8 +298,10 @@ def main():
     max_samples_per_class = args.max_samples_per_class  # Control this from command-line
     dataset_tokenized = downsample_dataset(dataset_tokenized, 'paraphrase_types', max_samples_per_class)
 
-    # Split the dataset into training and testing sets
-    train_dataset, test_dataset = split_dataset_by_type(dataset_tokenized)
+    # Split the dataset into training and testing sets with min and max constraints
+    print("Splitting dataset with min and max constraints...")
+    train_dataset, test_dataset = split_dataset_by_type(dataset_tokenized, train_percent=0.8, min_samples=100, max_samples=200)
+
 
     # Define model configuration with multi-label classification
     print("Loading model configuration...")

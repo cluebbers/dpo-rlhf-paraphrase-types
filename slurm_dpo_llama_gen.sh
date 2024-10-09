@@ -37,6 +37,8 @@ echo $PATH
 export TOKENIZERS_PARALLELISM=false
 # Set PYTHONPATH to point to the correct site-packages directory
 export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/dpo_env/lib/python3.10/site-packages:$PYTHONPATH
+# store HF models on scratch
+export HF_HOME=/scratch1/users/u12246/huggingface_cache
 
 python3 src/dpo_llama_gen.py --model_name $1 --adapter_dir $2 --loss_type $3
 
