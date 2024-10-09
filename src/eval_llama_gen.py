@@ -313,7 +313,50 @@ def save_paraphrases_to_json(paraphrases, output_file):
         # and indent=4 for pretty-printing
         json.dump(paraphrases, file, ensure_ascii=False, indent=4)
     logging.info(f"Paraphrases saved to {output_file}")
-    
+
+def evaluate_paraphrases_individual(paraphrases: List[str], references: List[str]) -> List[Dict[str, Any]]:
+    """
+    Evaluate paraphrases using ROUGE and BLEU scores, returning individual scores per sentence pair.
+
+    Args:
+        paraphrases (List[str]): The generated paraphrases.
+        references (List[str]): The reference texts.
+
+    Returns:
+        List[Dict[str, Any]]: A list containing the evaluation scores for each paraphrase-reference pair.
+    """
+    # ROUGE scores
+    rouge = Rouge()
+    valid_paraphrases = []
+    valid_references = []
+    individual_scores = []
+
+    # Collect only valid pairs for ROUGE evaluation
+    for idx, (paraphrase, reference) in enumerate(zip(paraphrases, references)):
+        try:
+            # Ensure each pair is valid before adding to the evaluation
+            rouge_score = rouge.get_scores(paraphrase, reference)[0]  # Get individual scores for this pair
+            smoothie = SmoothingFunction().method4
+            bleu_score = sentence_bleu([reference.split()], paraphrase.split(), smoothing_function=smoothie)
+
+            individual_scores.append({
+                "rouge-1": rouge_score["rouge-1"]["f"],
+                "rouge-2": rouge_score["rouge-2"]["f"],
+                "rouge-l": rouge_score["rouge-l"]["f"],
+                "bleu": bleu_score
+            })
+
+        except ValueError as e:
+            logging.warning(f"Skipping paraphrase at index {idx} due to ROUGE error: {e}")
+            individual_scores.append({
+                "rouge-1": 0.0,
+                "rouge-2": 0.0,
+                "rouge-l": 0.0,
+                "bleu": 0.0
+            })
+
+    return individual_scores
+ 
 def process_model_generation(
     model: PreTrainedModel, 
     tokenizer: PreTrainedTokenizerBase, 
@@ -321,41 +364,48 @@ def process_model_generation(
     etpc_data: List[Dict[str, Any]], 
     model_suffix: str, 
     batch_size: int
-) -> List[Dict[str, str]]:
+) -> List[Dict[str, Any]]:
     """
-    Generate paraphrases for both ETPC and APTY datasets using the provided model.
-
+    Generate paraphrases for both ETPC and APTY datasets using the provided model, and include evaluation scores.
+    
     Args:
         model (PreTrainedModel): Loaded model (with or without adapter already applied).
         tokenizer (PreTrainedTokenizerBase): Loaded tokenizer.
         apty_data (Dict[str, List[str]]): Dictionary of paraphrase types and sentences for APTY dataset.
         etpc_data (List[Dict[str, Any]]): List of entries to generate paraphrases for ETPC dataset.
-        adapter_dir (Optional[str]): This argument can be removed if not needed.
         model_suffix (str): Suffix to use for identifying the model type (base, etpc, dpo).
         batch_size (int): Batch size to use for generation.
-
+    
     Returns:
-        List[Dict[str, str]]: List of dictionaries containing generated paraphrases.
+        List[Dict[str, Any]]: List of dictionaries containing generated paraphrases and evaluation scores.
     """
-
     all_paraphrases = []
 
     # Generate paraphrases for APTY dataset
     for paraphrase_type, sentences in apty_data.items():
         paraphrases = generate_paraphrases(model, tokenizer, sentences, "apty", paraphrase_type, batch_size=batch_size)
-
-        # Log and save paraphrases
+        
+        # Evaluate paraphrases
+        scores = evaluate_paraphrases_individual(paraphrases, sentences)
+        
+        # Log and save paraphrases with scores
         all_paraphrases.extend([{
             "Original": sentence,
             "APT": paraphrase_type,
             "Paraphrase": paraphrase,
             "Model": model_suffix,
-            "Dataset": "APTY"
-        } for sentence, paraphrase in zip(sentences, paraphrases)])
+            "Dataset": "APTY",
+            "Evaluation": score
+        } for sentence, paraphrase, score in zip(sentences, paraphrases, scores)])
 
     # Generate paraphrases for ETPC dataset
     etpc_paraphrases = generate_paraphrases(model, tokenizer, etpc_data, "etpc", batch_size=batch_size)
-    for index, paraphrase in enumerate(etpc_paraphrases):
+    etpc_references = [instance["messages"][0]["content"] for instance in etpc_data]  # Extract references
+
+    # Evaluate ETPC paraphrases
+    etpc_scores = evaluate_paraphrases_individual(etpc_paraphrases, etpc_references)
+    
+    for index, (paraphrase, score) in enumerate(zip(etpc_paraphrases, etpc_scores)):
         full_content = etpc_data[index]["messages"][0]["content"]
 
         # Extract sentence and paraphrase type for logging
@@ -371,7 +421,8 @@ def process_model_generation(
             "APT": paraphrase_types,
             "Paraphrase": paraphrase,
             "Model": model_suffix,
-            "Dataset": "ETPC"
+            "Dataset": "ETPC",
+            "Evaluation": score
         })
 
     return all_paraphrases
@@ -397,11 +448,6 @@ def generate_and_evaluate(base_model, tokenizer, models, apty_data, etpc_data, o
         # Filter ETPC-generated paraphrases
         generated = [entry["Paraphrase"] for entry in paraphrases if entry["Dataset"] == "ETPC"]
 
-         # Log and skip empty paraphrases
-        for idx, (gen, ref) in enumerate(zip(generated, references)):
-            if not gen.strip():
-                logging.warning(f"Empty paraphrase for reference at index {idx}: {ref}")
-
         if len(generated) == 0:
             logging.warning(f"No paraphrases generated for model {model_suffix}")
             continue
@@ -418,8 +464,9 @@ def generate_and_evaluate(base_model, tokenizer, models, apty_data, etpc_data, o
         })
 
     # Save the results
-    save_paraphrases_to_json(all_paraphrases, output_json)
+    save_paraphrases_to_json(all_paraphrases, output_json)  # This will now include evaluation scores for each paraphrase
     save_metrics_to_csv(metrics, output_csv)
+
 
 def main():
     """
