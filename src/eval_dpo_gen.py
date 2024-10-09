@@ -340,8 +340,8 @@ def parse_args():
 
 def main():    
     args = parse_args()
-    output_csv = f"out/eval_{args.model_name.split('/')[-1]}.csv"
-    output_json = f"out/generated_paraphrases_{args.model_name.split('/')[-1]}.json"
+    output_csv = f"out/gen-models/eval_{args.model_name.split('/')[-1]}.csv"
+    output_json = f"out/gen-models/generated_paraphrases_{args.model_name.split('/')[-1]}.json"
     
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, clean_up_tokenization_spaces=False)
     tokenizer.add_tokens([f"<type-{i}>" for i in range(1, 30)])  # Add custom type tokens

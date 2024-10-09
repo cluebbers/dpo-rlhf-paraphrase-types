@@ -479,8 +479,8 @@ def main():
         raise ValueError(f"num_examples ({num_examples}) must be divisible by batch_size ({batch_size})")
 
     # Define output files
-    output_csv = f"out/eval_{args.model_name.split('/')[-1]}.csv"
-    output_json = f"out/generated_paraphrases_{args.model_name.split('/')[-1]}.json"
+    output_csv = f"out/gen-models/eval_{args.model_name.split('/')[-1]}.csv"
+    output_json = f"out/gen-models/generated_paraphrases_{args.model_name.split('/')[-1]}.json"
     
     # Load datasets, limiting ETPC data to num_examples
     apty_data = read_sentences_from_files("out/basesentences")
