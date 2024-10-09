@@ -392,7 +392,7 @@ def process_model_generation(
             "Paraphrase": paraphrase,
             "Model": model_suffix,
             "Dataset": "APTY",
-        } for sentence, paraphrase, score in zip(sentences, paraphrases)])
+        } for sentence, paraphrase in zip(sentences, paraphrases)])
 
     # Generate paraphrases for ETPC dataset
     etpc_paraphrases = generate_paraphrases(model, tokenizer, etpc_data, "etpc", batch_size=batch_size)

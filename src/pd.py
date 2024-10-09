@@ -98,8 +98,8 @@ def main():
     dataset = load_dataset("glue", "qqp")
         
     # Select a smaller subset of the dataset
-    train_dataset = dataset["train"].shuffle(seed=42).select(range(10000))  # Select 10,000 samples for training
-    val_dataset = dataset["validation"].shuffle(seed=42).select(range(1000))  # Select 1,000 samples for validation
+    train_dataset = dataset["train"].shuffle(seed=42).select(range(100000))  # Select 10,000 samples for training
+    val_dataset = dataset["validation"].shuffle(seed=42).select(range(10000))  # Select 1,000 samples for validation
 
     # Tokenize the subsetted datasets
     train_dataset_tokenized = train_dataset.map(
@@ -123,12 +123,13 @@ def main():
         evaluation_strategy="epoch",  # Evaluate at the end of each epoch
         save_strategy="epoch",  # Save model at the end of each epoch to match evaluation
         learning_rate=2e-5,
-        logging_steps=500,
-        per_device_train_batch_size=16,
-        per_device_eval_batch_size=16,
+        logging_steps=1000,
+        per_device_train_batch_size=32,
+        per_device_eval_batch_size=32,
         num_train_epochs=3,
         weight_decay=0.01,
         gradient_accumulation_steps=4,
+        dataloader_num_workers=4,
         logging_dir='./logs',
         load_best_model_at_end=True,  # Load the best model after training
         fp16=True,  # Use mixed precision training
