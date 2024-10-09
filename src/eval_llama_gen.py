@@ -385,9 +385,6 @@ def process_model_generation(
     for paraphrase_type, sentences in apty_data.items():
         paraphrases = generate_paraphrases(model, tokenizer, sentences, "apty", paraphrase_type, batch_size=batch_size)
         
-        # Evaluate paraphrases
-        scores = evaluate_paraphrases_individual(paraphrases, sentences)
-        
         # Log and save paraphrases with scores
         all_paraphrases.extend([{
             "Original": sentence,
@@ -395,12 +392,11 @@ def process_model_generation(
             "Paraphrase": paraphrase,
             "Model": model_suffix,
             "Dataset": "APTY",
-            "Evaluation": score
-        } for sentence, paraphrase, score in zip(sentences, paraphrases, scores)])
+        } for sentence, paraphrase, score in zip(sentences, paraphrases)])
 
     # Generate paraphrases for ETPC dataset
     etpc_paraphrases = generate_paraphrases(model, tokenizer, etpc_data, "etpc", batch_size=batch_size)
-    etpc_references = [instance["messages"][0]["content"] for instance in etpc_data]  # Extract references
+    etpc_references = [instance["messages"][1]["content"] for instance in etpc_data]  # Extract references
 
     # Evaluate ETPC paraphrases
     etpc_scores = evaluate_paraphrases_individual(etpc_paraphrases, etpc_references)
