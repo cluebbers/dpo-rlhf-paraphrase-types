@@ -1,12 +1,13 @@
 import argparse
 import os
 import torch
+import random
 import csv
-import requests
 import torch.nn as nn
-import xml.etree.ElementTree as ET
+import torch.nn.functional as F
 import numpy as np
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
+from collections import defaultdict
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report, hamming_loss, multilabel_confusion_matrix
 from datasets import load_dataset, Dataset
 from transformers import (
     AutoConfig,
@@ -16,86 +17,138 @@ from transformers import (
     TrainingArguments,
     DataCollatorWithPadding,
 )
-import random
 
-def write_results_to_csv(results, detailed_report, output_file="evaluation_results.csv"):
-    print(f"Writing results to {output_file}...")
-    with open(output_file, mode="w", newline="") as file:
-        writer = csv.writer(file)
-        
-        # Write the overall metrics
-        writer.writerow(["Metric", "Value"])
-        for key, value in results.items():
-            if key != 'detailed_report':  # Skip the detailed report for now
-                writer.writerow([key, value])
-        
-        # Leave a line before detailed report
-        writer.writerow([])
+# Top 10 paraphrase types
+top_10_types = [
+    "addition/deletion", "change of order", "derivational changes",
+    "inflectional changes", "punctuation changes",
+    "same polarity substitution (contextual)", "semantic-based", 
+    "spelling changes", "subordination and nesting changes", "synthetic/analytic substitution"
+]
 
-        # Write detailed classification report
-        if detailed_report:
-            writer.writerow(["Label", "Precision", "Recall", "F1-Score", "Support"])
-            for label, metrics in detailed_report.items():
-                precision = metrics.get("precision", 0)
-                recall = metrics.get("recall", 0)
-                f1_score = metrics.get("f1-score", 0)
-                support = metrics.get("support", 0)
-                writer.writerow([label, precision, recall, f1_score, support])
+# Focal loss implementation
+class FocalLossWithWeights(nn.Module):
+    def __init__(self, alpha=None, gamma=1, class_weights=None):
+        super(FocalLossWithWeights, self).__init__()
+        self.alpha = alpha
+        self.gamma = gamma
+        self.class_weights = class_weights
+
+    def forward(self, inputs, targets):
+        BCE_loss = F.binary_cross_entropy_with_logits(inputs, targets, reduction='none')
+        pt = torch.exp(-BCE_loss)  # Prevents NaNs when probability is 0
+        F_loss = (self.alpha * (1 - pt) ** self.gamma * BCE_loss).mean(dim=1)
+        if self.class_weights is not None:
+            class_weights = self.class_weights.unsqueeze(0)  # Make sure it's broadcastable
+            F_loss = F_loss * class_weights
+        return F_loss.mean()
+
+# Model preparation and class weight calculation
+def prepare_model_and_class_weights(model_name, train_dataset, paraphrase_type2cls_id):
+    num_labels = len(paraphrase_type2cls_id)  # Determine the number of labels from paraphrase_type2cls_id
+    config = AutoConfig.from_pretrained(
+        model_name,
+        num_labels=num_labels,
+        problem_type="multi_label_classification"
+    )
     
-    print(f"Results successfully written to {output_file}.")
-    
-def download_paraphrase_types_xml():
-    print("Downloading paraphrase types XML...")
-    url = "https://raw.githubusercontent.com/venelink/ETPC/master/Corpus/paraphrase_types.xml"
-    response = requests.get(url)
-    root = ET.fromstring(response.text)
+    model = AutoModelForSequenceClassification.from_pretrained(model_name, config=config)
+    class_weights = recalculate_class_weights(train_dataset, num_labels=num_labels, scale_factor=100.0)
+    model.classifier.loss_fct = FocalLossWithWeights(gamma=1, class_weights=class_weights)
+    model = model.to("cuda" if torch.cuda.is_available() else "cpu")
+    return model, class_weights
 
-    paraphrase_types = [child.find("type_name").text.strip().lower() for child in root]
-    paraphrase_type_ids = [int(child.find("type_id").text) for child in root]
-    paraphrase_type_categories = [child.find("type_category").text for child in root]
+# Confusion matrix calculation
+def compute_confusion_matrix(labels, preds):
+    conf_matrix = multilabel_confusion_matrix(labels, preds)
+    print(f"Confusion matrix for each class:\n {conf_matrix}")
+    return conf_matrix
 
-    print("Downloaded and parsed paraphrase types XML.")
-    return paraphrase_types, paraphrase_type_ids, paraphrase_type_categories
+# Main function that integrates everything
+def main():
+    args = parse_args()
 
-def create_label_maps():
-    print("Creating label maps...")
-    paraphrase_types, paraphrase_type_ids, paraphrase_type_categories = download_paraphrase_types_xml()
-
-    paraphrase_types = [ptype.strip().lower() for ptype in paraphrase_types]
-
-    paraphrase_type2cls_id = dict(zip(paraphrase_types, paraphrase_type_ids))
-    paraphrase_id2cls_type = dict(zip(paraphrase_type_ids, paraphrase_types))
-    paraphrase_type_to_category = dict(zip(paraphrase_types, paraphrase_type_categories))
-
-    paraphrase_type2cls_id["no_paraphrase"] = 0
-    paraphrase_id2cls_type[0] = "no_paraphrase"
-    paraphrase_type_to_category["no_paraphrase"] = "no_paraphrase"
-
-    label2cls_id = {label: idx for idx, label in enumerate(paraphrase_types, start=0)}
-    label2cls_id["no_paraphrase"] = 0
-    cls_id2label = {idx: label for label, idx in label2cls_id.items()}
-
-    cls_id2paraphrase_type_id = {i: paraphrase_type2cls_id[cls_id2label[i]] for i in cls_id2label}
-    paraphrase_type_id2cls_id = {v: k for k, v in cls_id2paraphrase_type_id.items()}
-
-    print("Label maps created successfully.")
-    return (
-        label2cls_id,
-        cls_id2label,
-        paraphrase_type2cls_id,
-        paraphrase_id2cls_type,
-        paraphrase_type_to_category,
-        cls_id2paraphrase_type_id,
-        paraphrase_type_id2cls_id,
+    dataset, tokenizer = load_and_prepare_dataset(args.model_name)
+    paraphrase_type2cls_id, paraphrase_id2cls_type, paraphrase_type_to_category = create_label_maps()
+    dataset_tokenized = tokenize_and_process_dataset(
+        dataset, tokenizer, paraphrase_type2cls_id
     )
 
-def tokenize_fn(examples, sentence1_key, sentence2_key, tokenizer, paraphrase_type2cls_id):
-    print("Tokenizing examples...")
+    inspect_labels(dataset_tokenized)
+    train_dataset, test_dataset = split_datasets(dataset_tokenized, paraphrase_type2cls_id)
+    model, class_weights = prepare_model_and_class_weights(
+        args.model_name, train_dataset, paraphrase_type2cls_id
+    )
+    
+    trainer = create_trainer(
+        model, train_dataset, test_dataset, tokenizer, class_weights, paraphrase_id2cls_type
+    )
+    
+    train_and_evaluate(trainer, args.model_name)
+
+# Argument parser function
+def parse_args():
+    parser = argparse.ArgumentParser(description="Paraphrase Type Detection Training")
+    parser.add_argument("--model_name", type=str, default="microsoft/deberta-base", help="Pretrained model name")
+    return parser.parse_args()
+
+# Dataset loading and preparation
+def load_and_prepare_dataset(model_name):
+    dataset = load_dataset("jpwahle/etpc").filter(lambda x: x["etpc_label"] == 1)
+    tokenizer = AutoTokenizer.from_pretrained(model_name, add_prefix_space=True, clean_up_tokenization_spaces=True)
+    dataset = dataset["train"].map(lowercase_labels)
+    return dataset, tokenizer
+
+# Function to lowercase labels
+def lowercase_labels(examples):
+    examples["paraphrase_types"] = [ptype.strip().lower() for ptype in examples["paraphrase_types"]]
+    return examples
+
+# Function to create label maps
+def create_label_maps():
+    paraphrase_types = [
+        "inflectional changes", "modal verb changes", "derivational changes", "spelling changes",
+        "same polarity substitution (habitual)", "same polarity substitution (contextual)",
+        "same polarity substitution (named ent.)", "change of format", "opposite polarity substitution (habitual)",
+        "opposite polarity substitution (contextual)", "synthetic/analytic substitution", "converse substitution",
+        "diathesis alternation", "negation switching", "ellipsis", "coordination changes",
+        "subordination and nesting changes", "punctuation changes", "direct/indirect style alternations",
+        "sentence modality changes", "syntax/discourse structure changes", "addition/deletion", "change of order",
+        "semantic based", "identity", "non-paraphrase", "entailment", "synthetic/analytic substitution (named ent.)", 
+        "negation"
+    ]
+
+    paraphrase_type_ids = list(range(len(paraphrase_types)))
+    paraphrase_type_categories = ["category_placeholder"] * len(paraphrase_types)
+    top_10_types_lower = [ptype.lower() for ptype in top_10_types]
+    
+    paraphrase_type2cls_id = {ptype: idx for idx, ptype in enumerate(top_10_types_lower)}
+    paraphrase_id2cls_type = {v: k for k, v in paraphrase_type2cls_id.items()}
+    paraphrase_type_to_category = {ptype: "category_placeholder" for ptype in top_10_types_lower}
+
+    return paraphrase_type2cls_id, paraphrase_id2cls_type, paraphrase_type_to_category
+
+# Function to tokenize and process dataset
+def tokenize_and_process_dataset(dataset, tokenizer, paraphrase_type2cls_id):
+    dataset_tokenized = dataset.map(
+        tokenize_fn,
+        batched=True,
+        fn_kwargs={
+            "sentence1_key": "sentence1",
+            "sentence2_key": "sentence2",
+            "tokenizer": tokenizer,
+            "paraphrase_type2cls_id": paraphrase_type2cls_id,
+            "top_10_types_lower": list(paraphrase_type2cls_id.keys()),
+        },
+    )
+    return dataset_tokenized
+
+# Function to tokenize data
+def tokenize_fn(examples, sentence1_key, sentence2_key, tokenizer, paraphrase_type2cls_id, top_10_types_lower):
     max_length = 512
     tokenized_inputs = tokenizer(
         examples[sentence1_key],
         examples[sentence2_key] if sentence2_key else None,
-        padding="max_length",
         truncation=True,
         max_length=max_length
     )
@@ -103,80 +156,33 @@ def tokenize_fn(examples, sentence1_key, sentence2_key, tokenizer, paraphrase_ty
     num_labels = len(paraphrase_type2cls_id)
     standardized_paraphrase_type2cls_id = {k.strip().lower(): v for k, v in paraphrase_type2cls_id.items()}
 
-    paraphrase_type_standardized_cache = {}
     labels = []
     for paraphrase_type_list in examples["paraphrase_types"]:
-        binary_labels = [0] * num_labels
+        binary_labels = [0] * num_labels  # Initialize all to 0
+
+        # Assign the correct paraphrase types to each label
         for paraphrase_type in paraphrase_type_list:
-            paraphrase_type_standardized = paraphrase_type_standardized_cache.get(paraphrase_type, paraphrase_type.strip().lower())
-            paraphrase_type_standardized_cache[paraphrase_type] = paraphrase_type_standardized
-            cls_id = standardized_paraphrase_type2cls_id.get(paraphrase_type_standardized)
-            if cls_id is not None and cls_id < num_labels:
-                binary_labels[cls_id] = 1
+            paraphrase_type_standardized = paraphrase_type.strip().lower()
+
+            # Check if the paraphrase type is in the top 10 types
+            if paraphrase_type_standardized in top_10_types_lower:
+                cls_id = standardized_paraphrase_type2cls_id.get(paraphrase_type_standardized)
+                if cls_id is not None:
+                    binary_labels[cls_id] = 1  # Set label to 1 for applicable paraphrase type
+
         labels.append(binary_labels)
 
-    tokenized_inputs["labels"] = torch.tensor(labels, dtype=torch.float32)  # Ensure labels are in float32
-    print("Tokenization completed.")
+    tokenized_inputs["labels"] = torch.tensor(labels, dtype=torch.float32)
     return tokenized_inputs
 
-def parse_args():
-    print("Parsing command line arguments...")
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name", type=str, default="microsoft/deberta-base", help="Name of the model to use")
-    parser.add_argument("--max_samples_per_class", type=int, default=100, help="Maximum samples per class for downsampling")
-    args = parser.parse_args()
-    print(f"Arguments parsed: model_name={args.model_name}, max_samples_per_class={args.max_samples_per_class}")
-    return args
+# Dataset splitting into training and testing
+def split_datasets(dataset_tokenized, paraphrase_type2cls_id):
+    train_dataset, test_dataset = split_dataset_by_type(dataset_tokenized, train_percent=0.8)
+    train_dataset = balance_dataset(train_dataset, paraphrase_type2cls_id, max_size=1000)
+    return train_dataset, test_dataset
 
-def compute_metrics(p, cls_id2label):
-    print("Computing metrics...")
-    predictions, labels = p
-    sigmoid = lambda x: 1 / (1 + np.exp(-x))
-    probs = sigmoid(predictions)
-    preds = (probs > 0.5).astype(int)
-
-    preds_flat = preds.flatten()
-    labels_flat = np.array(labels).flatten()
-
-    accuracy = accuracy_score(labels_flat, preds_flat)
-    precision = precision_score(labels_flat, preds_flat, average='macro', zero_division=0)
-    recall = recall_score(labels_flat, preds_flat, average='macro', zero_division=0)
-    f1 = f1_score(labels_flat, preds_flat, average='macro', zero_division=0)
-
-    # Ensure target_names length matches the number of classes
-    target_names = [cls_id2label.get(i, f"label_{i}") for i in range(len(cls_id2label))]
-
-    report = classification_report(
-        labels, preds, target_names=target_names, labels=np.arange(len(target_names)), output_dict=True
-    )
-
-    print("Metrics computed.")
-    return {
-        'accuracy': accuracy,
-        'precision': precision,
-        'recall': recall,
-        'f1': f1,
-        'detailed_report': report
-    }
-
-def split_dataset_by_type(dataset, train_percent=0.8, min_samples=100, max_samples=200):
-    """
-    Split dataset by paraphrase type while ensuring each paraphrase type has 
-    at least `min_samples` and at most `max_samples` examples.
-    
-    Args:
-    - dataset: The dataset to split.
-    - train_percent: The percentage of the dataset to use for training.
-    - min_samples: Minimum number of examples per paraphrase type.
-    - max_samples: Maximum number of examples per paraphrase type.
-    
-    Returns:
-    - train_dataset: Training set.
-    - test_dataset: Test set.
-    """
-    print("Splitting dataset by paraphrase type with constraints...")
-
-    # Group examples by paraphrase types
+# Split dataset based on paraphrase type
+def split_dataset_by_type(dataset, train_percent=0.8):
     paraphrase_type_to_examples = {}
     for example in dataset:
         paraphrase_types = example["paraphrase_types"]
@@ -186,210 +192,86 @@ def split_dataset_by_type(dataset, train_percent=0.8, min_samples=100, max_sampl
                 paraphrase_type_to_examples[ptype] = []
             paraphrase_type_to_examples[ptype].append(example)
 
-    train = []
-    test = []
-
+    added_examples = set()
+    train, test = [], []
     for ptype, examples in paraphrase_type_to_examples.items():
         num_examples = len(examples)
-
-        if num_examples < min_samples:
-            print(f"Skipping paraphrase type '{ptype}' with only {num_examples} examples (less than {min_samples}).")
-            continue
-        
-        # Limit the number of examples to max_samples
-        if num_examples > max_samples:
-            examples = random.sample(examples, max_samples)
-            num_examples = max_samples
-
-        # Split into train and test sets
         split_idx = int(train_percent * num_examples)
-        train.extend(examples[:split_idx])
-        test.extend(examples[split_idx:])
+        random.shuffle(examples)
 
-    # Convert to HuggingFace Dataset objects
+        for example in examples[:split_idx]:
+            example_id = id(example)
+            if example_id not in added_examples:
+                train.append(example)
+                added_examples.add(example_id)
+
+        for example in examples[split_idx:]:
+            example_id = id(example)
+            if example_id not in added_examples:
+                test.append(example)
+                added_examples.add(example_id)
+
     train_dataset = Dataset.from_list(train)
     test_dataset = Dataset.from_list(test)
-
-    print(f"Dataset split completed. Train size: {len(train_dataset)}, Test size: {len(test_dataset)}")
     return train_dataset, test_dataset
 
+# Class weights recalculation
+def recalculate_class_weights(train_dataset, num_labels, scale_factor=1.0):
+    label_counts = np.zeros(num_labels)
+    for labels in train_dataset["labels"]:
+        label_counts += np.array(labels)
+    print(f"Class counts: {label_counts}")
 
-
-def downsample_dataset(dataset, label_column, max_samples_per_class):
-    """
-    Downsample overrepresented classes in the dataset.
-    
-    Args:
-    - dataset: The dataset to downsample.
-    - label_column: The name of the column containing class labels.
-    - max_samples_per_class: Maximum number of samples per class after downsampling.
-    
-    Returns:
-    - downsampled_dataset: The downsampled dataset.
-    """
-    print("Downsampling overrepresented classes...")
-
-    # Group examples by their paraphrase type
-    class_groups = {label: [] for label in set([ptype for ptypes in dataset[label_column] for ptype in ptypes])}
-    for example in dataset:
-        for label in example[label_column]:
-            class_groups[label.strip().lower()].append(example)
-
-    # Downsample overrepresented classes
-    downsampled_data = []
-    for label, examples in class_groups.items():
-        if len(examples) > max_samples_per_class:
-            downsampled_data.extend(random.sample(examples, max_samples_per_class))
-        else:
-            downsampled_data.extend(examples)
-
-    downsampled_dataset = Dataset.from_list(downsampled_data)
-    print(f"Downsampling complete. Final dataset size: {len(downsampled_dataset)}")
-    return downsampled_dataset
-
-def main():
-    args = parse_args()
-
-    # Load dataset and tokenizer
-    print("Loading dataset...")
-    dataset = load_dataset("jpwahle/etpc")
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name, add_prefix_space=True, clean_up_tokenization_spaces=True)
-    sentence1_key, sentence2_key = "sentence1", "sentence2"
-    dataset = dataset["train"]
-    print("Dataset loaded.")
-
-    # Convert all paraphrase types in the dataset to lowercase for consistency
-    print("Converting paraphrase types to lowercase...")
-    def lowercase_labels(examples):
-        examples["paraphrase_types"] = [ptype.strip().lower() for ptype in examples["paraphrase_types"]]
-        return examples
-
-    dataset = dataset.map(lowercase_labels)
-    print("Paraphrase types converted to lowercase.")
-
-    # Create label maps for the paraphrase types
-    label_maps = create_label_maps()
-    (
-        label2cls_id,
-        cls_id2label,
-        paraphrase_type2cls_id,
-        paraphrase_id2cls_type,
-        paraphrase_type_to_category,
-        cls_id2paraphrase_type_id,
-        paraphrase_type_id2cls_id,
-    ) = label_maps
-
-    # Tokenize the dataset and prepare for training
-    print("Tokenizing dataset...")
-    dataset_tokenized = dataset.map(
-        tokenize_fn,
-        batched=True,
-        fn_kwargs={
-            "sentence1_key": sentence1_key,
-            "sentence2_key": sentence2_key,
-            "tokenizer": tokenizer,
-            "paraphrase_type2cls_id": paraphrase_type2cls_id,
-        },
-    )
-    print("Dataset tokenized.")
-
-    # Downsample the dataset to address class imbalance
-    print("Downsampling dataset...")
-    max_samples_per_class = args.max_samples_per_class  # Control this from command-line
-    dataset_tokenized = downsample_dataset(dataset_tokenized, 'paraphrase_types', max_samples_per_class)
-
-    # Split the dataset into training and testing sets with min and max constraints
-    print("Splitting dataset with min and max constraints...")
-    train_dataset, test_dataset = split_dataset_by_type(dataset_tokenized, train_percent=0.8, min_samples=100, max_samples=200)
-
-
-    # Define model configuration with multi-label classification
-    print("Loading model configuration...")
-    num_labels = len(paraphrase_type2cls_id)
-    config = AutoConfig.from_pretrained(
-        args.model_name,
-        num_labels=num_labels,
-        problem_type="multi_label_classification"
-    )
-    print("Model configuration loaded.")
-
-    # Load pretrained model and modify it for weighted loss
-    print("Loading pretrained model...")
-    model = AutoModelForSequenceClassification.from_pretrained(args.model_name, config=config)
-    print("Pretrained model loaded.")
-
-    # Calculate class weights to handle class imbalance
-    print("Calculating class weights...")
-    label_counts = np.sum(np.array(dataset_tokenized["labels"], dtype=np.float32), axis=0)
-    class_weights = 1.0 / (label_counts + np.finfo(np.float32).eps)  # Avoid division by zero
+    class_weights = 1.0 / (label_counts + np.finfo(np.float32).eps)
+    class_weights = (class_weights / np.sum(class_weights)) * scale_factor
     class_weights = torch.tensor(class_weights, dtype=torch.float32).to("cuda" if torch.cuda.is_available() else "cpu")
-    print("Class weights calculated.")
+    print(f"Class weights (scaled by {scale_factor}): {class_weights}")
+    return class_weights
 
-    # Modify the model to include the custom weighted loss function
-    model.classifier.loss_fct = nn.BCEWithLogitsLoss(weight=class_weights)
-    print("Custom weighted loss function added to the model.")
+# Balancing the dataset (handling imbalance)
+def balance_dataset(train_dataset, paraphrase_type2cls_id, max_size=1000, min_size=10):
+    class_to_examples = defaultdict(list)
+    for example in train_dataset:
+        labels = example["labels"]
+        if isinstance(labels, torch.Tensor):
+            labels = labels.tolist()
+        for idx, label in enumerate(labels):
+            if label == 1:
+                class_to_examples[idx].append(example)
 
-    model = model.to("cuda" if torch.cuda.is_available() else "cpu")
-
-    # Set up data collator and training arguments
-    print("Setting up data collator and training arguments...")
-    data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
-    training_args = TrainingArguments(
-        output_dir=f"./out/cls-models/{args.model_name.replace('/', '_')}_etpc_seq-cls",
-        per_device_train_batch_size=4,
-        per_device_eval_batch_size=4,
-        gradient_accumulation_steps=4,
-        fp16=True,
-    )
-    print("Data collator and training arguments set up.")
-
-    # Create Trainer object for model training and evaluation
-    print("Creating Trainer...")
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=test_dataset,
-        tokenizer=tokenizer,
-        data_collator=data_collator,
-        compute_metrics=lambda p: compute_metrics(p, cls_id2label),
-    )
-    print("Trainer created.")
-
-    # Train the model
-    print("Starting training...")
-    trainer.train()
-    print("Training completed.")
-
-    # Evaluate the model
-    print("Starting evaluation...")
-    results = trainer.evaluate()
-    print("Evaluation completed.")
-    print("#" * 20)
-    print(args.model_name)
-    print(results)
-    print("#" * 20)
-
-    # Print detailed metrics by paraphrase type
-    detailed_report = results.pop('detailed_report', None)
-    if detailed_report:
-        print("Printing detailed classification report...")
-        for label, metrics in detailed_report.items():
-            print(f"Label: {label}")
-            for metric, value in metrics.items():
-                print(f"  {metric}: {value}")
+    low_count_classes = {cls for cls, examples in class_to_examples.items() if len(examples) < min_size}
+    high_count_classes = {cls for cls, examples in class_to_examples.items() if len(examples) > max_size}
     
-    # Ensure directory for output exists
-    output_file = f"out/eval_{args.model_name.replace('/', '_')}_etpc_seq-cls_results.csv"
-    output_dir = os.path.dirname(output_file)
+    balanced_examples = []
 
-    # Only create the directory if output_dir is not empty
-    if output_dir and not os.path.exists(output_dir):
-        os.makedirs(output_dir)
+    for paraphrase_class, examples in class_to_examples.items():
+        if paraphrase_class in high_count_classes:
+            filtered_examples = [ex for ex in examples if not any(
+                ex["labels"][low_cls] == 1 for low_cls in low_count_classes)]
+            examples_to_add = random.sample(filtered_examples, max_size) if len(filtered_examples) > max_size else filtered_examples
+        else:
+            examples_to_add = examples  
+        
+        for example in examples_to_add:
+            if example not in balanced_examples:
+                balanced_examples.append(example)
 
+    for paraphrase_class, examples in class_to_examples.items():
+        if paraphrase_class in low_count_classes:
+            for example in examples:
+                if example not in balanced_examples:
+                    balanced_examples.append(example)
+            num_to_add = min_size - len(examples)
+            if num_to_add > 0:
+                oversampled_examples = random.choices(examples, k=num_to_add)
+                balanced_examples.extend(oversampled_examples)
 
-    # Write results to CSV
-    write_results_to_csv(results, detailed_report, output_file=output_file)
+    for paraphrase_class in range(len(paraphrase_type2cls_id)):
+        current_class_examples = [ex for ex in balanced_examples if ex["labels"][paraphrase_class] == 1]
+        if len(current_class_examples) == 0 and paraphrase_class in class_to_examples:
+            balanced_examples.extend(random.sample(class_to_examples[paraphrase_class], min_size))
+
+    return Dataset.from_list(balanced_examples)
 
 if __name__ == "__main__":
     main()
