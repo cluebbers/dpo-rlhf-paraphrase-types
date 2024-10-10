@@ -2,7 +2,7 @@
 #SBATCH --job-name=pd
 #SBATCH --account=luebbers_masters
 #SBATCH --partition=gpu
-#SBATCH -t 12:00:00
+#SBATCH -t 24:00:00
 #SBATCH --gpus V100:1
 #SBATCH -n 1
 #SBATCH --nodes=1
