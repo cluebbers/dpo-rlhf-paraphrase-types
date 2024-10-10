@@ -1,6 +1,7 @@
 import argparse
 import numpy as np
 import pandas as pd
+import torch  
 from datasets import load_dataset
 from transformers import (
     AutoModelForSequenceClassification,
@@ -11,170 +12,126 @@ from transformers import (
 )
 import evaluate
 
-def tokenize_fn(examples, tokenizer):
+# Global dictionary for all metrics
+metrics = {
+    "accuracy": evaluate.load("accuracy"),
+    "precision": evaluate.load("precision"),
+    "recall": evaluate.load("recall"),
+    "f1": evaluate.load("f1")
+}
+
+def tokenize_examples(examples, tokenizer):
     """
-    Tokenizes input examples using a tokenizer.
-    
+    Tokenizes input examples using the provided tokenizer.
+
     Args:
-        examples (dict): The input examples.
-        sentence1_key (str): The key for the first sentence in the examples.
-        sentence2_key (str, optional): The key for the second sentence in the examples.
-        tokenizer (Tokenizer): The tokenizer to use for tokenization.
+        examples (dict): A dictionary with keys 'question1', 'question2', and 'label'.
+        tokenizer (Tokenizer): The tokenizer used for encoding the questions.
 
     Returns:
-        dict: The tokenized inputs.
+        dict: Tokenized examples with the corresponding labels.
     """
-    tokenized_inputs = tokenizer(
-        examples["question1"],
-        examples["question2"],
-        padding="max_length",
-        truncation=True,
-        max_length=256 # Limit max length for faster training
-    )
-    tokenized_inputs["labels"] = examples["label"]
-    return tokenized_inputs
+    return {
+        **tokenizer(examples["question1"], examples["question2"], padding="max_length", truncation=True, max_length=256),
+        "labels": examples["label"]
+    }
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     """
-    Parses command line arguments.
-    
+    Parses command-line arguments.
+
     Returns:
-        argparse.Namespace: An object containing the parsed arguments.
+        argparse.Namespace: Parsed arguments.
     """
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--model_name",
-        type=str,
-        default="microsoft/deberta-base",
-        help="Name of the model to use",
-    )
-    parser.add_argument(
-        "--device",
-        type=str,
-        default="cuda",
-        help="Hardware to use, either of 'cpu', 'cuda', or 'mps'",
-    )
+    parser = argparse.ArgumentParser(description="Train a paraphrase detection model.")
+    parser.add_argument("--model_name", type=str, default="microsoft/deberta-base", help="Model name from Hugging Face hub.")
     return parser.parse_args()
 
-def compute_metrics_binary(eval_pred):
+def compute_binary_metrics(eval_pred):
     """
-    Computes accuracy, precision, recall, and F1 metrics for binary classification.
+    Computes accuracy, precision, recall, and F1 score for binary classification.
 
     Args:
-        eval_pred: The predictions and labels from the model.
+        eval_pred (tuple): Model predictions and corresponding labels.
 
     Returns:
-        dict: The calculated accuracy, precision, recall, and F1 score.
+        dict: Computed accuracy, precision, recall, and F1 score.
     """
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
     
-    # Access global metrics
-    accuracy_score = accuracy_metric.compute(predictions=predictions, references=labels)
-    precision_score = precision_metric.compute(predictions=predictions, references=labels, average="binary")
-    recall_score = recall_metric.compute(predictions=predictions, references=labels, average="binary")
-    f1_score = f1_metric.compute(predictions=predictions, references=labels, average="binary")
+    return {metric: metrics[metric].compute(predictions=predictions, references=labels)[metric]
+            for metric in ["accuracy", "precision", "recall", "f1"]}
+
+def load_and_tokenize_dataset(tokenizer, subset_size=None):
+    """
+    Loads and tokenizes the QQP dataset.
+
+    Args:
+        tokenizer (Tokenizer): The tokenizer used to encode questions.
+        subset_size (int, optional): If set, selects a smaller subset of the dataset.
+
+    Returns:
+        dict: Tokenized train, validation, and test datasets.
+    """
+    dataset = load_dataset("glue", "qqp")
+    
+    if subset_size:
+        dataset = {split: dataset[split].shuffle(seed=42).select(range(subset_size)) for split in ["train", "validation", "test"]}
     
     return {
-        "accuracy": accuracy_score["accuracy"],
-        "precision": precision_score["precision"],
-        "recall": recall_score["recall"],
-        "f1": f1_score["f1"],
+        split: dataset[split].map(tokenize_examples, batched=True, fn_kwargs={"tokenizer": tokenizer})
+        for split in ["train", "validation", "test"]
     }
 
 def main():
+    """
+    Main function to train and evaluate the paraphrase detection model.
+    """
     args = parse_args()
 
-    # Initialize tokenizer and model
+    # Automatically set device to 'cuda' if available, else 'cpu'
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    # Load tokenizer and model
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
     model = AutoModelForSequenceClassification.from_pretrained(
-        args.model_name,
-        num_labels=2,  # Binary classification
-        id2label={0: "no_paraphrase", 1: "paraphrase"},
-        label2id={"no_paraphrase": 0, "paraphrase": 1},
-    ).to(args.device)
+        args.model_name, num_labels=2, id2label={0: "no_paraphrase", 1: "paraphrase"}, label2id={"no_paraphrase": 0, "paraphrase": 1}
+    ).to(device)
 
-    # Load the QQP dataset
-    dataset = load_dataset("glue", "qqp")
-        
-    # Select a smaller subset of the dataset
-    train_dataset = dataset["train"] #.shuffle(seed=42).select(range(100000))  # Select 10,000 samples for training
-    val_dataset = dataset["validation"]#.shuffle(seed=42).select(range(10000))  # Select 1,000 samples for validation
-    test_dataset = dataset["test"]#.shuffle(seed=42).select(range(10000))  # Select 1,000 samples for validation
+    # Load and tokenize dataset
+    tokenized_datasets = load_and_tokenize_dataset(tokenizer)
 
-    # Tokenize the subsetted datasets
-    train_dataset_tokenized = train_dataset.map(
-        tokenize_fn,
-        batched=True,
-        fn_kwargs={"tokenizer": tokenizer},
-    )
-    val_dataset_tokenized = val_dataset.map(
-        tokenize_fn,
-        batched=True,
-        fn_kwargs={"tokenizer": tokenizer},
-    )
-    test_dataset_tokenized = test_dataset.map(
-        tokenize_fn,
-        batched=True,
-        fn_kwargs={"tokenizer": tokenizer},
-    )
-
-    # Define data collator with dynamic padding
-    data_collator = DataCollatorWithPadding(tokenizer)
-
-    # Define training arguments
-    # Define training arguments
-    training_args = TrainingArguments(
-        output_dir=f"./out/cls-models/{args.model_name.split('/')[-1]}_qqp_pd",
-        evaluation_strategy="epoch",  # Evaluate at the end of each epoch
-        save_strategy="epoch",  # Save model at the end of each epoch to match evaluation
-        learning_rate=2e-5,
-        logging_steps=100000,
-        per_device_train_batch_size=32,
-        per_device_eval_batch_size=32,
-        num_train_epochs=5,
-        weight_decay=0.01,
-        gradient_accumulation_steps=4,
-        dataloader_num_workers=4,
-        logging_dir='./logs',
-        load_best_model_at_end=True,  # Load the best model after training
-        fp16=True,  # Use mixed precision training
-    )
-
-
-    # Create Trainer object
+    # Define Trainer and training arguments
+    output_dir = f"./out/{args.model_name.split('/')[-1]}_qqp_pd"
     trainer = Trainer(
         model=model,
-        args=training_args,
-        train_dataset=train_dataset_tokenized,
-        eval_dataset=val_dataset_tokenized,
+        args=TrainingArguments(
+            output_dir=output_dir,
+            evaluation_strategy="epoch",
+            save_strategy="epoch",
+            learning_rate=2e-5,
+            per_device_train_batch_size=32,
+            per_device_eval_batch_size=32,
+            num_train_epochs=5,
+            weight_decay=0.01,
+            logging_dir="./logs",
+            load_best_model_at_end=True,
+            fp16=True,
+        ),
+        train_dataset=tokenized_datasets["train"],
+        eval_dataset=tokenized_datasets["validation"],
         tokenizer=tokenizer,
-        data_collator=data_collator,
-        compute_metrics=compute_metrics_binary,
+        data_collator=DataCollatorWithPadding(tokenizer),
+        compute_metrics=compute_binary_metrics,
     )
 
-    # Training
-    print("Starting training...")
+    # Train and evaluate model
     trainer.train()
+    results = trainer.evaluate(eval_dataset=tokenized_datasets["test"])
 
-    # Evaluation on validation set
-    print("Evaluating on validation set...")
-    results = trainer.evaluate(eval_dataset=test_dataset_tokenized)
-    print("#" * 20)
-    print(args.model_name)
-    print("paraphrase-detection")
-    print(results)
-    print("#" * 20)
-
-    # Save results to CSV
-    results_df = pd.DataFrame([results])
-    results_df.to_csv(f"out/cls-models/{args.model_name.split('/')[-1]}-qqp-pd-results.csv", index=False)
+    # Save results
+    pd.DataFrame([results]).to_csv(f"{output_dir}_results.csv", index=False)
 
 if __name__ == "__main__":
-    # Load metrics globally once
-    accuracy_metric = evaluate.load("accuracy")
-    precision_metric = evaluate.load("precision")
-    recall_metric = evaluate.load("recall")
-    f1_metric = evaluate.load("f1")
-    
     main()
