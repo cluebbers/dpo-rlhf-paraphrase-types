@@ -98,8 +98,9 @@ def main():
     dataset = load_dataset("glue", "qqp")
         
     # Select a smaller subset of the dataset
-    train_dataset = dataset["train"].shuffle(seed=42).select(range(100000))  # Select 10,000 samples for training
-    val_dataset = dataset["validation"].shuffle(seed=42).select(range(10000))  # Select 1,000 samples for validation
+    train_dataset = dataset["train"] #.shuffle(seed=42).select(range(100000))  # Select 10,000 samples for training
+    val_dataset = dataset["validation"]#.shuffle(seed=42).select(range(10000))  # Select 1,000 samples for validation
+    test_dataset = dataset["test"]#.shuffle(seed=42).select(range(10000))  # Select 1,000 samples for validation
 
     # Tokenize the subsetted datasets
     train_dataset_tokenized = train_dataset.map(
@@ -108,6 +109,11 @@ def main():
         fn_kwargs={"tokenizer": tokenizer},
     )
     val_dataset_tokenized = val_dataset.map(
+        tokenize_fn,
+        batched=True,
+        fn_kwargs={"tokenizer": tokenizer},
+    )
+    test_dataset_tokenized = test_dataset.map(
         tokenize_fn,
         batched=True,
         fn_kwargs={"tokenizer": tokenizer},
@@ -123,10 +129,10 @@ def main():
         evaluation_strategy="epoch",  # Evaluate at the end of each epoch
         save_strategy="epoch",  # Save model at the end of each epoch to match evaluation
         learning_rate=2e-5,
-        logging_steps=1000,
+        logging_steps=100000,
         per_device_train_batch_size=32,
         per_device_eval_batch_size=32,
-        num_train_epochs=3,
+        num_train_epochs=5,
         weight_decay=0.01,
         gradient_accumulation_steps=4,
         dataloader_num_workers=4,
@@ -153,7 +159,7 @@ def main():
 
     # Evaluation on validation set
     print("Evaluating on validation set...")
-    results = trainer.evaluate()
+    results = trainer.evaluate(eval_dataset=test_dataset_tokenized)
     print("#" * 20)
     print(args.model_name)
     print("paraphrase-detection")

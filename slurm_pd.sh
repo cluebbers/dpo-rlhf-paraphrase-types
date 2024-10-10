@@ -2,8 +2,8 @@
 #SBATCH --job-name=pd
 #SBATCH --account=luebbers_masters
 #SBATCH --partition=gpu
-#SBATCH -t 2:00:00
-#SBATCH --gpus RTX5000:1
+#SBATCH -t 12:00:00
+#SBATCH --gpus V100:1
 #SBATCH -n 1
 #SBATCH --nodes=1
 #SBATCH -c 1
@@ -45,3 +45,4 @@ python3 src/pd.py --model_name $1
 
 #TODO
 # sbatch slurm_pd.sh microsoft/deberta-base
+# sbatch slurm_pd.sh microsoft/deberta-v3-large
