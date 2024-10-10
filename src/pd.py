@@ -59,9 +59,18 @@ def compute_binary_metrics(eval_pred):
     """
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
-    
-    return {metric: metrics[metric].compute(predictions=predictions, references=labels)[metric]
-            for metric in ["accuracy", "precision", "recall", "f1"]}
+
+    # Ensure labels are either 0 or 1, not -1 or 0
+    labels = np.where(labels == -1, 0, labels)
+
+    return {
+        "accuracy": metrics["accuracy"].compute(predictions=predictions, references=labels)["accuracy"],
+        "precision": metrics["precision"].compute(predictions=predictions, references=labels, average="binary", pos_label=1)["precision"],
+        "recall": metrics["recall"].compute(predictions=predictions, references=labels, average="binary", pos_label=1)["recall"],
+        "f1": metrics["f1"].compute(predictions=predictions, references=labels, average="binary", pos_label=1)["f1"],
+    }
+
+
 
 def load_and_tokenize_dataset(tokenizer, subset_size=None):
     """
@@ -77,11 +86,11 @@ def load_and_tokenize_dataset(tokenizer, subset_size=None):
     dataset = load_dataset("glue", "qqp")
     
     if subset_size:
-        dataset = {split: dataset[split].shuffle(seed=42).select(range(subset_size)) for split in ["train", "validation", "test"]}
+        dataset = {split: dataset[split].shuffle(seed=42).select(range(subset_size)) for split in ["train", "validation"]}
     
     return {
         split: dataset[split].map(tokenize_examples, batched=True, fn_kwargs={"tokenizer": tokenizer})
-        for split in ["train", "validation", "test"]
+        for split in ["train", "validation"]
     }
 
 def main():
@@ -102,8 +111,9 @@ def main():
     # Load and tokenize dataset
     tokenized_datasets = load_and_tokenize_dataset(tokenizer)
 
-    # Define Trainer and training arguments
-    output_dir = f"./out/{args.model_name.split('/')[-1]}_qqp_pd"
+    # Path to save models in the scratch filesystem
+    output_dir = f"/scratch1/users/u12246/out/cls-models/{args.model_name.split('/')[-1]}_qqp_pd"  
+
     trainer = Trainer(
         model=model,
         args=TrainingArguments(
@@ -115,9 +125,11 @@ def main():
             per_device_eval_batch_size=32,
             num_train_epochs=5,
             weight_decay=0.01,
-            logging_dir="./logs",
             load_best_model_at_end=True,
+            metric_for_best_model="accuracy",
+            greater_is_better=True,
             fp16=True,
+            save_total_limit=1,
         ),
         train_dataset=tokenized_datasets["train"],
         eval_dataset=tokenized_datasets["validation"],
@@ -128,10 +140,14 @@ def main():
 
     # Train and evaluate model
     trainer.train()
-    results = trainer.evaluate(eval_dataset=tokenized_datasets["test"])
+    print(f"Best model is saved at: {trainer.args.output_dir}")
+    
+    results = trainer.evaluate(eval_dataset=tokenized_datasets["validation"])
 
-    # Save results
-    pd.DataFrame([results]).to_csv(f"{output_dir}_results.csv", index=False)
+    # Save and print the location of the test set evaluation results
+    results_file = f"./out/cls-models/{args.model_name.split('/')[-1]}_qqp_pd_results.csv"
+    pd.DataFrame([results]).to_csv(results_file, index=False)
+    print(f"Test set evaluation results are saved at: {results_file}")
 
 if __name__ == "__main__":
     main()
