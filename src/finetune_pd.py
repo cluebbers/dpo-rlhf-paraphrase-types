@@ -32,7 +32,7 @@ def tokenize_examples(examples, tokenizer):
         dict: Tokenized examples with the corresponding labels.
     """
     return {
-        **tokenizer(examples["question1"], examples["question2"], padding="max_length", truncation=True, max_length=256),
+        **tokenizer(examples["question1"], examples["question2"], truncation=True, max_length=256),
         "labels": examples["label"]
     }
 
