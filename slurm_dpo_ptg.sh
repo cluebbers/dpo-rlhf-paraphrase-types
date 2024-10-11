@@ -1,5 +1,5 @@
 #!/bin/sh
-#SBATCH --job-name=para_gen
+#SBATCH --job-name=dpo_ptg
 #SBATCH --account=luebbers_masters
 #SBATCH --partition=gpu
 #SBATCH -t 2:00:00
@@ -14,7 +14,7 @@
 
 module load miniforge3
 module load cuda
-source activate wahle_env
+source activate dpo_env
 
 # Printing out some info.
 echo "Submitting job with sbatch from directory: ${SLURM_SUBMIT_DIR}"
@@ -24,6 +24,7 @@ echo "Current node: ${SLURM_NODELIST}"
 
 echo "Model: $1"
 echo "Task: $2"
+echo "loss_type: $3"
 
 # For debugging purposes.
 python --version
@@ -34,14 +35,16 @@ echo "Current environment: $(which python)"
 echo $PATH
 
 # Set PYTHONPATH to point to the correct site-packages directory
-export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/wahle_env/lib/python3.10/site-packages:$PYTHONPATH
-
+export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/dpo_env/lib/python3.10/site-packages:$PYTHONPATH
+# store HF models on scratch
+export HF_HOME=/scratch1/users/u12246/huggingface_cache
 export TOKENIZERS_PARALLELISM=false
 
-python3 src/finetune_generation.py --task_name $2 --model_name $1
+python3 src/dpo_ptg.py --model_name $1 --task_name $2 --loss_type $3
 
 # done
-# sbatch slurm_gen.sh facebook/bart-large paraphrase-type-generation
+# sbatch slurm_dpo_ptg.sh facebook/bart-large paraphrase-type-generation sigmoid
+# sbatch slurm_dpo_ptg.sh facebook/bart-large paraphrase-type-generation ipo
 
 #TODO
-# sbatch slurm_gen.sh facebook/bart-large paraphrase-generation
+

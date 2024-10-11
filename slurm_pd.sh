@@ -33,13 +33,13 @@ echo "Current environment: $(which python)"
 echo $PATH
 
 # Set PYTHONPATH to point to the correct site-packages directory
-export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/wahle_env/lib/python3.10/site-packages:$PYTHONPATH
+export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/dpo_env/lib/python3.10/site-packages:$PYTHONPATH
 # store HF models on scratch
 export HF_HOME=/scratch1/users/u12246/huggingface_cache
 
 export TOKENIZERS_PARALLELISM=false
 
-python3 src/pd.py --model_name $1 
+python3 src/finetune_pd.py --model_name $1 
 
 # done
 
