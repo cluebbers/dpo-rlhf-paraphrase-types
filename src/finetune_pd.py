@@ -1,7 +1,8 @@
 import argparse
+import evaluate
+import torch  
 import numpy as np
 import pandas as pd
-import torch  
 from datasets import load_dataset
 from transformers import (
     AutoModelForSequenceClassification,
@@ -10,7 +11,6 @@ from transformers import (
     TrainingArguments,
     DataCollatorWithPadding,
 )
-import evaluate
 
 # Global dictionary for all metrics
 metrics = {
