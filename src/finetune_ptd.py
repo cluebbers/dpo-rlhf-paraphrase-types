@@ -23,7 +23,7 @@ from transformers import (
 
 TOP_10_PARAPHRASE_TYPES = [
     "addition/deletion", "change of order", "derivational changes", "inflectional changes",
-    "punctuation changes", "same polarity substitution (contextual)", "semantic-based",
+    "punctuation changes", "same polarity substitution (contextual)", "semantic based",
     "spelling changes", "subordination and nesting changes", "synthetic/analytic substitution"
 ]
 
@@ -95,7 +95,7 @@ def tokenize_examples(examples: Dict[str, List[str]], sentence1_key: str, tokeni
 def parse_arguments() -> argparse.Namespace:
     """Parse command line arguments for the experiment."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name", type=str, default="microsoft/deberta-base", help="Name of the model to use")
+    parser.add_argument("--model_name", type=str, default="out/cls-models/deberta-base_qqp_pd", help="Name of the model to use")
     parser.add_argument("--max_samples_per_class", type=int, default=100, help="Maximum samples per class for downsampling")
     return parser.parse_args()
 
@@ -121,7 +121,8 @@ def compute_metrics(predictions, labels, cls_id2label):
     )
     filtered_report = {label: metrics for label, metrics in report.items() if metrics.get("support", 0) > 0}
 
-    return {'accuracy': accuracy, 'precision': precision, 'recall': recall, 'f1': f1, 'eval_detailed_report': filtered_report}
+    #return {'accuracy': accuracy, 'precision': precision, 'recall': recall, 'f1': f1, 'eval_detailed_report': filtered_report}
+    return {'accuracy': accuracy, 'precision': precision, 'recall': recall, 'f1': f1}
 
 def split_dataset_by_type(
     dataset: Dataset, 
@@ -200,6 +201,16 @@ def count_paraphrase_types(dataset: Dataset) -> Dict[str, int]:
 
     return type_counts
 
+def hyperparameter_space(trial):
+    return {
+        "learning_rate": trial.suggest_float("learning_rate", 1e-5, 5e-5, log=True),
+        "weight_decay": trial.suggest_categorical("weight_decay", [0.0, 0.01, 0.1]),
+        "per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [16, 32]),
+        # Suggest class weights for each of the top 10 paraphrase types
+        "class_weights": [trial.suggest_float(f"class_weight_{i}", 0.1, 10.0, log=True) for i in range(len(TOP_10_PARAPHRASE_TYPES))]
+    }
+
+
 
 def main():
     args = parse_arguments()
@@ -236,29 +247,61 @@ def main():
         
     num_labels = len(paraphrase_type2cls_id)
     config = AutoConfig.from_pretrained(args.model_name, num_labels=num_labels, problem_type="multi_label_classification")
-    model = AutoModelForSequenceClassification.from_pretrained(args.model_name, config=config)
+    
+    def model_init(trial=None):
+        model = AutoModelForSequenceClassification.from_pretrained(args.model_name, config=config, ignore_mismatched_sizes=True)
+        
+        # Get the class weights from the trial if available
+        if trial is not None:
+            class_weights = torch.tensor(trial.suggest_float(f"class_weights", 0.1, 10.0, log=True), dtype=torch.float32).to("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            # Fallback to default class weights if no trial (for regular training)
+            class_weights = torch.tensor(1.0 / (np.sum(np.array(dataset_tokenized["labels"], dtype=np.float32), axis=0) + np.finfo(np.float32).eps), dtype=torch.float32).to("cuda" if torch.cuda.is_available() else "cpu")
 
-    class_weights = torch.tensor(1.0 / (np.sum(np.array(dataset_tokenized["labels"], dtype=np.float32), axis=0) + np.finfo(np.float32).eps), dtype=torch.float32).to("cuda" if torch.cuda.is_available() else "cpu")
-    model.classifier.loss_fct = nn.BCEWithLogitsLoss(weight=class_weights)
+        # Define the loss function with the class weights
+        model.classifier.loss_fct = nn.BCEWithLogitsLoss(weight=class_weights)
+        
+        return model
 
     trainer = Trainer(
-        model=model, 
+        model_init=lambda trial: model_init(trial),  # Pass the trial object to model_init
         args=TrainingArguments(
             output_dir=f"./out/cls-models/{args.model_name.split('/')[-1]}_etpc_ptd", 
             per_device_train_batch_size=32, 
+            eval_strategy="epoch",
+            save_strategy="epoch",
+            save_total_limit=1,
             fp16=True,
-            num_train_epochs=3,
-            ),
-        train_dataset=train_dataset, 
-        eval_dataset=test_dataset, 
+            num_train_epochs=5,
+            metric_for_best_model='f1',
+            load_best_model_at_end=True,
+            greater_is_better=True,
+        ),
+        train_dataset=train_dataset,
+        eval_dataset=test_dataset,
         tokenizer=tokenizer,
         data_collator=DataCollatorWithPadding(tokenizer=tokenizer, padding="longest"),
         compute_metrics=lambda p: compute_metrics(p.predictions, p.label_ids, cls_id2label)
     )
 
+    # Perform the hyperparameter search using optuna
+    best_run = trainer.hyperparameter_search(
+        direction="maximize",
+        hp_space=hyperparameter_space,
+        n_trials=10,
+        backend="optuna"
+    )
+
+    # Apply the best hyperparameters, including class weights
+    trainer.args.learning_rate = best_run.hyperparameters['learning_rate']
+    trainer.args.weight_decay = best_run.hyperparameters['weight_decay']
+    trainer.args.per_device_train_batch_size = best_run.hyperparameters['per_device_train_batch_size']
+
+    # Best class weights are part of the model's loss function in model_init.
     trainer.train()
+
     results = trainer.evaluate()
-    write_results_to_csv(results, output_file=f"out/cls-models/{args.model_name.split('/')[-1]}_results.csv")
+    write_results_to_csv(results, output_file=f"out/cls-models/{args.model_name.split('/')[-1]}_ptd_results_hyperclass.csv")
 
 if __name__ == "__main__":
     main()

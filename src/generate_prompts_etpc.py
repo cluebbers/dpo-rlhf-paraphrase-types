@@ -50,7 +50,7 @@ def write_to_jsonl(data, filename):
                             " changes, Syntax/discourse structure changes,"
                             " Entailment, Identity, Non-paraphrase,"
                             " Addition/Deletion, Change of order,"
-                            " Semantic-based."
+                            " Semantic based."
                             " List the paraphrase types that differ between Sentence 1 and Sentence 2: "
                         ),
                     },
