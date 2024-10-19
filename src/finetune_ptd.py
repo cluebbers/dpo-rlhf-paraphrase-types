@@ -10,6 +10,7 @@ import requests
 import xml.etree.ElementTree as ET
 import numpy as np
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
+from collections import Counter
 from datasets import load_dataset, Dataset
 from transformers import (
     AutoConfig,
@@ -33,21 +34,8 @@ def write_results_to_csv(results, output_file="evaluation_results.csv"):
         writer = csv.writer(file)
         writer.writerow(["Metric", "Value"])
         for key, value in results.items():
-            if key != 'eval_detailed_report':
-                writer.writerow([key, value])
+            writer.writerow([key, value])
 
-        writer.writerow([])
-        detailed_report = results.get("eval_detailed_report", None)
-        if isinstance(detailed_report, dict):
-            writer.writerow(["Label", "Precision", "Recall", "F1-Score", "Support"])
-            for label, metrics in detailed_report.items():
-                writer.writerow([
-                    label,
-                    metrics.get("precision", 0),
-                    metrics.get("recall", 0),
-                    metrics.get("f1-score", 0),
-                    metrics.get("support", 0)
-                ])
         print(f"Results written to {output_file}")
 
 def fetch_paraphrase_types():
@@ -79,17 +67,27 @@ def tokenize_examples(examples: Dict[str, List[str]], sentence1_key: str, tokeni
         examples[sentence1_key], examples[sentence2_key] if sentence2_key else None, truncation=True, max_length=256
     )
 
-    num_labels = len(paraphrase_type2cls_id)
+    # The number of labels should correspond to the number of top 10 paraphrase types
+    num_labels = len(TOP_10_PARAPHRASE_TYPES)
     labels = []
     for paraphrase_type_list in examples["paraphrase_types"]:
         binary_labels = [0] * num_labels
         for paraphrase_type in paraphrase_type_list:
-            cls_id = paraphrase_type2cls_id.get(paraphrase_type.strip().lower())
-            if cls_id is not None and cls_id < num_labels:
-                binary_labels[cls_id] = 1
+            paraphrase_type_clean = paraphrase_type.strip().lower()
+            # Only assign labels to top 10 paraphrase types
+            if paraphrase_type_clean in TOP_10_PARAPHRASE_TYPES:
+                cls_id = paraphrase_type2cls_id.get(paraphrase_type_clean)
+                if cls_id is not None and cls_id < num_labels:
+                    binary_labels[cls_id] = 1
         labels.append(binary_labels)
 
     tokenized_inputs["labels"] = torch.tensor(labels, dtype=torch.float32)
+
+    # Debugging: print just a small sample (1% of examples)
+    if random.random() < 0.01:
+        print(f"Sample paraphrase types: {examples['paraphrase_types'][0]}")
+        print(f"Corresponding binary labels: {labels[0]}")
+
     return tokenized_inputs
 
 def parse_arguments() -> argparse.Namespace:
@@ -100,9 +98,11 @@ def parse_arguments() -> argparse.Namespace:
     return parser.parse_args()
 
 def compute_metrics(predictions, labels, cls_id2label):
-    """Computes various metrics for evaluation."""
-    sigmoid = lambda x: 1 / (1 + np.exp(-x))
+    """Computes various metrics for multi-label evaluation."""
+    sigmoid = lambda x: 1 / (1 + np.exp(-x))  # Convert logits to probabilities
     probs = sigmoid(predictions)
+    
+    # Threshold probabilities to get binary predictions (multi-label classification)
     preds = (probs > 0.5).astype(int)
 
     top_10_types = [ptype for ptype in TOP_10_PARAPHRASE_TYPES]
@@ -111,58 +111,90 @@ def compute_metrics(predictions, labels, cls_id2label):
     filtered_preds = preds[:, top_10_indices]
     filtered_labels = labels[:, top_10_indices]
 
+    # Debugging: Ensure predictions and labels shape alignment
+    print(f"Filtered Predictions shape: {filtered_preds.shape}")
+    print(f"Filtered Labels shape: {filtered_labels.shape}")
+
+    # Fix: Get the index for 'inflectional changes' paraphrase type
+    inflectional_idx = list(cls_id2label.values()).index("inflectional changes")
+    
+    # Print raw probabilities and predictions for 'inflectional changes'
+    print(f"Raw logits for 'inflectional changes': {predictions[:, inflectional_idx]}")
+    print(f"Predictions for 'inflectional changes': {filtered_preds[:, inflectional_idx]}")
+    
+    # Compute multi-label metrics (macro averages)
     accuracy = accuracy_score(filtered_labels.flatten(), filtered_preds.flatten())
     precision = precision_score(filtered_labels.flatten(), filtered_preds.flatten(), average='macro', zero_division=0)
     recall = recall_score(filtered_labels.flatten(), filtered_preds.flatten(), average='macro', zero_division=0)
     f1 = f1_score(filtered_labels.flatten(), filtered_preds.flatten(), average='macro', zero_division=0)
 
+    # Generate detailed classification report for individual paraphrase types
     report = classification_report(
         filtered_labels, filtered_preds, target_names=[cls_id2label[i] for i in top_10_indices], output_dict=True
     )
-    filtered_report = {label: metrics for label, metrics in report.items() if metrics.get("support", 0) > 0}
 
-    #return {'accuracy': accuracy, 'precision': precision, 'recall': recall, 'f1': f1, 'eval_detailed_report': filtered_report}
-    return {'accuracy': accuracy, 'precision': precision, 'recall': recall, 'f1': f1}
+    # Debug: Print out the support counts
+    for label, metrics in report.items():
+        if isinstance(metrics, dict):
+            print(f"{label}: support = {metrics['support']}")
+
+    return {
+        'accuracy': accuracy,
+        'precision': precision,
+        'recall': recall,
+        'f1': f1
+    }
 
 def split_dataset_by_type(
     dataset: Dataset, 
     train_percent: float = 0.8, 
     min_samples: int = 100, 
-    max_samples: int = 400) -> Tuple[Dataset, Dataset, Dict[str, int], Dict[str, int]]:
+    max_samples: int = 400
+) -> Tuple[Dataset, Dataset, Dict[str, int], Dict[str, int]]:
     """
     Split dataset by paraphrase type while ensuring each paraphrase type has 
-    at least `min_samples` and at most `max_samples` examples. Additionally, count the number of paraphrase types in the train and test sets.
-    
-    Args:
-    - dataset: The dataset to split.
-    - train_percent: The percentage of the dataset to use for training.
-    - min_samples: Minimum number of examples per paraphrase type.
-    - max_samples: Maximum number of examples per paraphrase type.
-    
-    Returns:
-    - train_dataset: Training set.
-    - test_dataset: Test set.
-    - train_type_counts: Dictionary containing paraphrase type counts in the train set.
-    - test_type_counts: Dictionary containing paraphrase type counts in the test set.
+    at least `min_samples` and at most `max_samples` examples. Filter out sentences with paraphrase types 
+    not in the TOP 10 list.
     """
     paraphrase_type_to_examples: Dict[str, List[Dict[str, Any]]] = {}
 
+    # Normalize TOP_10_PARAPHRASE_TYPES to lowercase for consistent comparison
+    normalized_top_10_types = [ptype.strip().lower() for ptype in TOP_10_PARAPHRASE_TYPES]
+
+    # Step 2: Filter the dataset
     for example in dataset:
-        filtered_types = [ptype.strip().lower() for ptype in example["paraphrase_types"] if ptype in TOP_10_PARAPHRASE_TYPES]
-        if filtered_types:
-            example["paraphrase_types"] = filtered_types
-            for ptype in filtered_types:
-                paraphrase_type_to_examples.setdefault(ptype, []).append(example)
+        if "paraphrase_types" not in example:
+            continue
+
+        # Normalize the paraphrase types in the dataset to lowercase and strip spaces
+        filtered_types = [ptype.strip().lower() for ptype in example["paraphrase_types"] if ptype.strip().lower() in normalized_top_10_types]
+        
+        # If no paraphrase type from TOP_10_PARAPHRASE_TYPES, skip this sample
+        if not filtered_types:
+            continue
+
+        example["paraphrase_types"] = filtered_types
+        for ptype in filtered_types:
+            paraphrase_type_to_examples.setdefault(ptype, []).append(example)
+
+    # Check if any examples remain after filtering
+    if not paraphrase_type_to_examples:
+        print("No examples remain after filtering. Please check the dataset structure and filtering logic.")
+        return Dataset.from_list([]), Dataset.from_list([]), {}, {}
 
     train_examples: List[Dict[str, Any]] = []
     test_examples: List[Dict[str, Any]] = []
     train_type_counts: Dict[str, int] = {}
     test_type_counts: Dict[str, int] = {}
 
+    # Step 3: Downsampling and splitting into train/test
     for ptype, examples in paraphrase_type_to_examples.items():
         num_examples = len(examples)
+        print(f"Type {ptype} has {num_examples} examples")  # Debugging output
+        
         if num_examples < min_samples:
-            continue
+            print(f"Skipping {ptype} due to insufficient samples ({num_examples} < {min_samples})")
+            continue  # Skip types with fewer than the minimum required samples
         
         examples = random.sample(examples, min(num_examples, max_samples))
         split_idx = int(train_percent * len(examples))
@@ -176,28 +208,36 @@ def split_dataset_by_type(
         train_type_counts[ptype] = len(train_subset)
         test_type_counts[ptype] = len(test_subset)
 
+    # Debug: Print final train and test counts
+    print(f"Train counts: {train_type_counts}")
+    print(f"Test counts: {test_type_counts}")
+
+    # Create train and test datasets
     train_dataset = Dataset.from_list(train_examples)
     test_dataset = Dataset.from_list(test_examples)
 
+    # Return datasets and counts
     return train_dataset, test_dataset, train_type_counts, test_type_counts
 
 def count_paraphrase_types(dataset: Dataset) -> Dict[str, int]:
     """
     Counts the occurrences of each paraphrase type in the dataset.
-    
-    Args:
-    - dataset: The dataset to analyze.
-    
-    Returns:
-    - type_counts: A dictionary with paraphrase types as keys and their counts as values.
     """
     type_counts: Dict[str, int] = {}
 
     for example in dataset:
+        # Check if "paraphrase_types" field exists and is a list
+        if "paraphrase_types" not in example or not isinstance(example["paraphrase_types"], list):
+            print(f"Skipping example due to missing paraphrase_types: {example}")
+            continue
+
         for ptype in example["paraphrase_types"]:
             ptype = ptype.strip().lower()
             if ptype in TOP_10_PARAPHRASE_TYPES:
                 type_counts[ptype] = type_counts.get(ptype, 0) + 1
+
+    # Debug: Print the resulting paraphrase type counts
+    print(f"Paraphrase type counts: {type_counts}")
 
     return type_counts
 
@@ -206,22 +246,16 @@ def hyperparameter_space(trial):
         "learning_rate": trial.suggest_float("learning_rate", 1e-5, 5e-5, log=True),
         "weight_decay": trial.suggest_categorical("weight_decay", [0.0, 0.01, 0.1]),
         "per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [16, 32]),
-        # Suggest class weights for each of the top 10 paraphrase types
-        "class_weights": [trial.suggest_float(f"class_weight_{i}", 0.1, 10.0, log=True) for i in range(len(TOP_10_PARAPHRASE_TYPES))]
     }
-
-
 
 def main():
     args = parse_arguments()
 
     dataset = load_dataset("jpwahle/etpc").filter(lambda x: x["etpc_label"] == 1)["train"]
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, clean_up_tokenization_spaces=True)
-    dataset = dataset.map(lambda ex: {**ex, "paraphrase_types": [ptype.strip().lower() for ptype in ex["paraphrase_types"]]})
 
     # Count paraphrase types before splitting
     pre_split_type_counts = count_paraphrase_types(dataset)
-
     print("Number of paraphrase types before splitting:")
     for ptype, count in pre_split_type_counts.items():
         print(f"{ptype}: {count}")
@@ -236,11 +270,11 @@ def main():
     # Split the dataset into training and testing sets with type counts
     train_dataset, test_dataset, train_type_counts, test_type_counts = split_dataset_by_type(dataset_tokenized, train_percent=0.8, min_samples=100, max_samples=400)
 
-     # Print out the number of paraphrase types in train and test sets
+    # Print out the number of paraphrase types in train and test sets
     print("Number of paraphrase types in the training set:")
     for ptype, count in train_type_counts.items():
         print(f"{ptype}: {count}")
-
+    
     print("\nNumber of paraphrase types in the test set:")
     for ptype, count in test_type_counts.items():
         print(f"{ptype}: {count}")
@@ -249,18 +283,9 @@ def main():
     config = AutoConfig.from_pretrained(args.model_name, num_labels=num_labels, problem_type="multi_label_classification")
     
     def model_init(trial=None):
-        model = AutoModelForSequenceClassification.from_pretrained(args.model_name, config=config, ignore_mismatched_sizes=True)
-        
-        # Get the class weights from the trial if available
-        if trial is not None:
-            class_weights = torch.tensor(trial.suggest_float(f"class_weights", 0.1, 10.0, log=True), dtype=torch.float32).to("cuda" if torch.cuda.is_available() else "cpu")
-        else:
-            # Fallback to default class weights if no trial (for regular training)
-            class_weights = torch.tensor(1.0 / (np.sum(np.array(dataset_tokenized["labels"], dtype=np.float32), axis=0) + np.finfo(np.float32).eps), dtype=torch.float32).to("cuda" if torch.cuda.is_available() else "cpu")
-
-        # Define the loss function with the class weights
-        model.classifier.loss_fct = nn.BCEWithLogitsLoss(weight=class_weights)
-        
+        model = AutoModelForSequenceClassification.from_pretrained(
+            args.model_name, config=config, ignore_mismatched_sizes=True
+        )
         return model
 
     trainer = Trainer(
@@ -284,22 +309,23 @@ def main():
         compute_metrics=lambda p: compute_metrics(p.predictions, p.label_ids, cls_id2label)
     )
 
-    # Perform the hyperparameter search using optuna
+    # Perform the hyperparameter search using Optuna
     best_run = trainer.hyperparameter_search(
         direction="maximize",
         hp_space=hyperparameter_space,
-        n_trials=10,
+        n_trials=20,
         backend="optuna"
     )
 
-    # Apply the best hyperparameters, including class weights
+    # Apply the best hyperparameters found by the search
     trainer.args.learning_rate = best_run.hyperparameters['learning_rate']
     trainer.args.weight_decay = best_run.hyperparameters['weight_decay']
     trainer.args.per_device_train_batch_size = best_run.hyperparameters['per_device_train_batch_size']
 
-    # Best class weights are part of the model's loss function in model_init.
+    # Continue training with the best hyperparameters
     trainer.train()
 
+    # Evaluate and write results to CSV
     results = trainer.evaluate()
     write_results_to_csv(results, output_file=f"out/cls-models/{args.model_name.split('/')[-1]}_ptd_results_hyperclass.csv")
 

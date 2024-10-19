@@ -27,7 +27,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--model_name",
         type=str,
-        default="meta-llama/Llama-2-7b-hf",
+        default="out/gen-models/llama-3.1-8b-etpc",
         help="Path to the model",
     )
     parser.add_argument(
@@ -75,7 +75,8 @@ def load_model_and_tokenizer(model_name, adapter_dir, device):
 
     # Load model and tokenizer
     model = AutoModelForCausalLM.from_pretrained(model_name, quantization_config=bnb_config)
-    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B", padding_side="left")
+    #TODO make variable for model
+    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B", padding_side="left", padding="longest")
     tokenizer.pad_token = tokenizer.eos_token
 
     # If no adapter_dir is provided, create a new adapter configuration using LoRA
@@ -83,7 +84,7 @@ def load_model_and_tokenizer(model_name, adapter_dir, device):
         logging.info("No adapter_dir provided. Adding a new LoRA adapter.")
         # Define a simple LoRA configuration
         peft_config = LoraConfig(
-            r=16,  # Rank for LoRA matrices
+            r=8,  # Rank for LoRA matrices
             lora_alpha=32,  # Alpha scaling
             target_modules=["q_proj", "v_proj"],  # Apply LoRA to these layers
             lora_dropout=0.05,
@@ -203,6 +204,7 @@ def main():
     datasets = load_datasets(train_json_path, eval_json_path)
     train_dataset = datasets['train']
     eval_dataset = datasets['validation']
+    torch.cuda.empty_cache()
 
     # Setup DPO trainer
     trainer = setup_dpo_trainer(model, tokenizer, train_dataset, eval_dataset, output_dir, args.loss_type)
