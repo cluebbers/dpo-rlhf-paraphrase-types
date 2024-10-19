@@ -61,7 +61,7 @@ def parse_arguments():
 
 def load_json_data(filename: str, max_examples: int | None = None) -> list[dict]:
     """
-    Loads data from a JSON file and limits the number of examples.
+    Loads data from a JSONL file and limits the number of examples.
 
     Args:
         filename (str): The path to the file to load.
@@ -70,13 +70,15 @@ def load_json_data(filename: str, max_examples: int | None = None) -> list[dict]
     Returns:
         list[dict]: The loaded data as a list of dictionaries.
     """
+    data = []
     with open(filename, "r", encoding="utf-8") as file:
-        data = json.load(file)
-
-    if max_examples is not None:
-        data = data[:max_examples]
+        for line in file:
+            data.append(json.loads(line.strip()))
+            if max_examples is not None and len(data) >= max_examples:
+                break
 
     return data
+
 
 def read_sentences_by_type(data_dir: str) -> dict[str, list[str]]:
     """Reads sentences from text files and organizes them by paraphrase type.
@@ -111,7 +113,7 @@ def load_tokenizer(model_name: str) -> tuple[PreTrainedTokenizerBase, PreTrained
     tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left", use_fast=True)
 
     if tokenizer.pad_token is None:
-        tokenizer.add_special_tokens({"pad_token": "<pad>"}, resize_embeddings=True)
+        tokenizer.add_special_tokens({"pad_token": "<pad>"})
         
     return tokenizer
 
@@ -122,7 +124,6 @@ def tokenize_data(tokenizer, prompts: List[str]) -> Dict[str, torch.Tensor]:
         return_tensors="pt",
         padding=True,
         truncation=True,
-        max_length="longest"
     )
     
 def generate_paraphrases(
@@ -271,17 +272,35 @@ def process_model_generation(
     for original_sentence, paraphrase, reference in zip(
         tokenized_etpc_data["original_sentences"], etpc_paraphrases, etpc_references
     ):
+        
+        # Extract the part between "Sentence: " and " Paraphrase Types:"
+        start = original_sentence.find("Sentence: ") + len("Sentence: ")
+        end = original_sentence.find(" Paraphrase Types:")
+        if start != -1 and end != -1:
+            cleaned_sentence = original_sentence[start:end].strip()
+        else:
+            cleaned_sentence = original_sentence
+            
+        # Extract the part between "Paraphrase Types:" and " Generated Paraphrase:"
+        apt_start = original_sentence.find("Paraphrase Types:") + len("Paraphrase Types:")
+        apt_end = original_sentence.find(" Generated Paraphrase:")
+        if apt_start != -1 and apt_end != -1:
+            apt = original_sentence[apt_start:apt_end].strip()
+        else:
+            apt = ""
+        
         evaluation = evaluate_individual_paraphrases([paraphrase], [reference])[0]
-        if original_sentence not in grouped_paraphrases:
-            grouped_paraphrases[original_sentence] = {
-                "id": hash(original_sentence) % 1000,
-                "original": original_sentence,
+        if cleaned_sentence not in grouped_paraphrases:
+            grouped_paraphrases[cleaned_sentence] = {
+                "id": hash(cleaned_sentence) % 1000,
+                "original": cleaned_sentence,
+                "APT": apt,
                 "reference": reference,
                 "dataset": "ETPC",
                 "List": []
             }
-        grouped_paraphrases[original_sentence]["List"].append({
-            "id": len(grouped_paraphrases[original_sentence]["List"]),
+        grouped_paraphrases[cleaned_sentence]["List"].append({
+            "id": len(grouped_paraphrases[cleaned_sentence]["List"]),
             "paraphrase": paraphrase,
             "evaluation": evaluation,
             "model": model_suffix
@@ -383,6 +402,7 @@ def generate_and_evaluate(
         {
             "id": details["id"],
             "original": details["original"],
+            "APT": details["APT"],
             "reference": details.get("reference"),
             "dataset": details["dataset"],
             "List": details["List"]
@@ -402,7 +422,7 @@ def main():
     output_csv = f"out/gen-models/eval_{args.model_name.split('/')[-1]}.csv"
     output_json = f"out/gen-models/generated_paraphrases_{args.model_name.split('/')[-1]}.json"
     apty_data = read_sentences_by_type("out/basesentences")
-    etpc_data = load_json_data("out/generation_etpc_test.jsonl", num_examples=num_examples)
+    etpc_data = load_json_data("out/generation_etpc_test.jsonl", max_examples=num_examples)
     etpc_prompts = [instance["messages"][0]["content"] for instance in etpc_data]
     etpc_references = [instance["messages"][1]["content"] for instance in etpc_data]
 
@@ -426,9 +446,9 @@ def main():
     tokenized_etpc_data["original_sentences"] = etpc_prompts
 
     models = [
-        (args.model_name, None, "base_model"),
+       # (args.model_name, None, "base_model"),
         (args.model_name, args.etpc_dir, "etpc_model"),
-        (args.model_name, args.dpo_dir, "dpo_model"),    # DPO adapter 
+        #(args.model_name, args.dpo_dir, "dpo_model"),    # DPO adapter 
         #(args.model_name, args.ipo_dir, "ipo_model"),    # IPO adapter  
     ]
 
