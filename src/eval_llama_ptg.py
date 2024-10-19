@@ -44,7 +44,7 @@ def parse_arguments():
     """
     parser = argparse.ArgumentParser(description="Generate paraphrases and evaluate models.")
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-2-7b-hf", help="Base model path.")
-    parser.add_argument("--etpc_dir", type=str, default="out/gen-models/llama-7b-etpc", help="ETPC adapter directory.")
+    parser.add_argument("--etpc_dir", type=str, default="out/gen-models/llama-2-7b-etpc", help="ETPC adapter directory.")
     parser.add_argument("--dpo_dir", type=str, default="out/gen-models/dpo_meta-llama-Llama-7b-hf_sigmoid", help="DPO adapter directory.")
     parser.add_argument("--ipo_dir", type=str, default="out/gen-models/dpo_meta-llama-Llama-7b-hf_ipo", help="DPO adapter directory.")
     return parser.parse_args()
@@ -141,13 +141,6 @@ def load_model_and_tokenizer(model_name: str, adapter_dir: Optional[str] = None)
     # Set the model's padding token ID to the new padding token
     model.config.pad_token_id = tokenizer.pad_token_id or model.config.eos_token_id
 
-    # Load the adapter if specified
-    if adapter_dir:
-        # Clear any existing PEFT adapters before loading a new one
-        PeftModel.clear_adapters()  # Clear any existing PEFT adapters before loading a new one
-        logging.info(f"Loading PEFT adapter from {adapter_dir}")
-        peft_config = PeftConfig.from_pretrained(adapter_dir)
-        model = PeftModel.from_pretrained(model, adapter_dir, config=peft_config)
 
     model.eval()
     torch.cuda.empty_cache()
@@ -366,7 +359,7 @@ def process_model_generation(
     batch_size: int
 ) -> List[Dict[str, Any]]:
     """
-    Generate paraphrases for both ETPC and APTY datasets using the provided model, and include evaluation scores.
+    Generate paraphrases for both ETPC and APTY datasets using the provided model and include metrics.
     
     Args:
         model (PreTrainedModel): Loaded model (with or without adapter already applied).
@@ -377,92 +370,131 @@ def process_model_generation(
         batch_size (int): Batch size to use for generation.
     
     Returns:
-        List[Dict[str, Any]]: List of dictionaries containing generated paraphrases and evaluation scores.
+        List[Dict[str, Any]]: List of dictionaries containing generated paraphrases and metrics.
     """
     all_paraphrases = []
+    grouped_paraphrases = {}
 
     # Generate paraphrases for APTY dataset
     for paraphrase_type, sentences in apty_data.items():
         paraphrases = generate_paraphrases(model, tokenizer, sentences, "apty", paraphrase_type, batch_size=batch_size)
-        
-        # Log and save paraphrases with scores
-        all_paraphrases.extend([{
-            "Original": sentence,
-            "APT": paraphrase_type,
-            "Paraphrase": paraphrase,
-            "Model": model_suffix,
-            "Dataset": "APTY",
-        } for sentence, paraphrase in zip(sentences, paraphrases)])
+
+        for original_sentence, paraphrase in zip(sentences, paraphrases):
+            # Group paraphrases by the original sentence
+            if original_sentence not in grouped_paraphrases:
+                grouped_paraphrases[original_sentence] = {
+                    "id": hash(original_sentence) % 1000,
+                    "original": original_sentence,
+                    "dataset": "APTY",
+                    "annotator": 4,
+                    "List": []
+                }
+
+            grouped_paraphrases[original_sentence]["List"].append({
+                "id": len(grouped_paraphrases[original_sentence]["List"]),
+                "paraphrase": paraphrase,
+                "model": model_suffix
+            })
 
     # Generate paraphrases for ETPC dataset
     etpc_paraphrases = generate_paraphrases(model, tokenizer, etpc_data, "etpc", batch_size=batch_size)
     etpc_references = [instance["messages"][1]["content"] for instance in etpc_data]  # Extract references
 
-    # Evaluate ETPC paraphrases
-    etpc_scores = evaluate_paraphrases_individual(etpc_paraphrases, etpc_references)
-    
-    for index, (paraphrase, score) in enumerate(zip(etpc_paraphrases, etpc_scores)):
-        full_content = etpc_data[index]["messages"][0]["content"]
+    for instance, paraphrase, reference in zip(etpc_data, etpc_paraphrases, etpc_references):
+        original_sentence = instance["messages"][0]["content"]
+        
+        # Evaluate individual paraphrase against the reference
+        evaluation = evaluate_paraphrases_individual([paraphrase], [reference])[0]
 
-        # Extract sentence and paraphrase type for logging
-        if "Sentence:" in full_content and "Paraphrase Types:" in full_content:
-            original_sentence = full_content.split("Sentence:")[1].split("Paraphrase Types:")[0].strip()
-            paraphrase_types = full_content.split("Paraphrase Types:")[1].strip()
-        else:
-            original_sentence = full_content
-            paraphrase_types = "Unknown"
+        # Group paraphrases by the original sentence
+        if original_sentence not in grouped_paraphrases:
+            grouped_paraphrases[original_sentence] = {
+                "id": hash(original_sentence) % 1000,
+                "original": original_sentence,
+                "reference": reference,
+                "dataset": "ETPC",
+                "annotator": 4,
+                "List": []
+            }
 
-        all_paraphrases.append({
-            "Original": original_sentence,
-            "APT": paraphrase_types,
-            "Paraphrase": paraphrase,
-            "Model": model_suffix,
-            "Dataset": "ETPC",
-            "Evaluation": score
+        grouped_paraphrases[original_sentence]["List"].append({
+            "id": len(grouped_paraphrases[original_sentence]["List"]),
+            "paraphrase": paraphrase,
+            "evaluation": evaluation,
+            "model": model_suffix
         })
 
-    return all_paraphrases
+    return grouped_paraphrases
 
-
-def generate_and_evaluate(base_model, tokenizer, models, apty_data, etpc_data, output_csv, output_json, batch_size):
+def generate_and_evaluate(models, apty_data, etpc_data, output_csv, output_json, batch_size):
     """
     Main function to generate paraphrases for different models and evaluate them.
     """
     metrics = []
-    all_paraphrases = []
-    references = [item["messages"][0]["content"] for item in etpc_data]  # References for ETPC dataset
-
+    all_paraphrases = {}
+    
+    model, tokenizer = load_model_and_tokenizer(models[0][0])
+    
+    # Add adapters to the base model
     for model_name, adapter_dir, model_suffix in models:
-        logging.info(f"Starting generation for model: {model_suffix}")
+        if adapter_dir:
+            logging.info(f"Adding adapter {model_suffix} from {adapter_dir}")
+            model.load_adapter(adapter_dir, adapter_name=model_suffix)
+            model.set_adapter(model_suffix)         
+
+        # Generate paraphrases including evaluation metrics
+        paraphrases = process_model_generation(model, tokenizer, apty_data, etpc_data, model_suffix, batch_size)
+
+        # Merge paraphrases into all_paraphrases dictionary
+        for original_sentence, details in paraphrases.items():
+            if original_sentence not in all_paraphrases:
+                all_paraphrases[original_sentence] = details
+            else:
+                all_paraphrases[original_sentence]["List"].extend(details["List"])
+
         
-        # Extract the adapter name from the adapter_dir (e.g., 'llama-7b-etpc')
-        adapter_name = os.path.basename(adapter_dir) if adapter_dir else "base"
+        # Collect evaluation metrics for this model
+        scores = [
+            entry["evaluation"] for details in paraphrases.values()
+            for entry in details["List"] if "evaluation" in entry
+        ]
+        # Calculate average metrics for this model
+        if scores:
+            avg_rouge_1 = sum(score["rouge-1"] for score in scores) / len(scores)
+            avg_rouge_2 = sum(score["rouge-2"] for score in scores) / len(scores)
+            avg_rouge_l = sum(score["rouge-l"] for score in scores) / len(scores)
+            avg_bleu = sum(score["bleu"] for score in scores) / len(scores)
+        else:
+            avg_rouge_1 = avg_rouge_2 = avg_rouge_l = avg_bleu = 0
 
-        paraphrases = process_model_generation(base_model, tokenizer, apty_data, etpc_data, model_suffix, batch_size)
-        all_paraphrases.extend(paraphrases)
-
-        # Filter ETPC-generated paraphrases
-        generated = [entry["Paraphrase"] for entry in paraphrases if entry["Dataset"] == "ETPC"]
-
-        if len(generated) == 0:
-            logging.warning(f"No paraphrases generated for model {model_suffix}")
-            continue
-
-        # Evaluate the paraphrases using ROUGE and BLEU
-        scores = evaluate_paraphrases(generated, references)
-        logging.info(f"Scores for {model_suffix}: {scores}")
-
-        # Append the correct model and adapter names to the metrics
+        # Append average scores to metrics for CSV output
         metrics.append({
-            "Model": model_name,  # Use the actual model name
-            "Adapter": adapter_name,  # Use the extracted adapter name or 'base'
-            **scores
+            "Model": model_name,
+            "Adapter": model_suffix,
+            "ROUGE-1": avg_rouge_1,
+            "ROUGE-2": avg_rouge_2,
+            "ROUGE-L": avg_rouge_l,
+            "BLEU": avg_bleu,
         })
+        
+    # Adjust the structure to a list format for JSON
+    json_paraphrases = [
+        {
+            "id": details["id"],
+            "original": details["original"],
+            "reference": details.get("reference"),
+            "dataset": details["dataset"],
+            "annotator": details["annotator"],
+            "List": details["List"]
+        }
+        for details in all_paraphrases.values()
+    ]
 
-    # Save the results
-    save_paraphrases_to_json(all_paraphrases, output_json)  # This will now include evaluation scores for each paraphrase
+    # Save the paraphrases to JSON
+    save_paraphrases_to_json(json_paraphrases, output_json)
+
+    # Save the evaluation metrics to CSV
     save_metrics_to_csv(metrics, output_csv)
-
 
 def main():
     """
@@ -486,20 +518,17 @@ def main():
     apty_data = read_sentences_from_files("out/basesentences")
     etpc_data = load_data("out/generation_etpc_test.jsonl", num_examples=num_examples)
 
-    # Load base model and tokenizer once
-    base_model, tokenizer = load_model_and_tokenizer(args.model_name)
-
     # List of models to process: base, ETPC adapter, DPO adapter
     models = [
         (args.model_name, None, "base_model"),           # Base model (no adapter)
         (args.model_name, args.etpc_dir, "etpc_model"),  # ETPC adapter
-        (args.model_name, args.dpo_dir, "dpo_model"),    # DPO adapter 
-        (args.model_name, args.ipo_dir, "ipo_model"),    # IPO adapter       
+        #(args.model_name, args.dpo_dir, "dpo_model"),    # DPO adapter 
+        #(args.model_name, args.ipo_dir, "ipo_model"),    # IPO adapter       
     ]
 
 
     # Generate paraphrases and evaluate models
-    generate_and_evaluate(base_model, tokenizer, models, apty_data, etpc_data, output_csv, output_json, batch_size)
+    generate_and_evaluate(models, apty_data, etpc_data, output_csv, output_json, batch_size)
 
 if __name__ == "__main__":
     main()
