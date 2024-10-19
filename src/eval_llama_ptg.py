@@ -299,7 +299,9 @@ def generate_and_evaluate(
                 model = AutoModelForCausalLM.from_pretrained(adapter_dir, 
                                                              torch_dtype=torch.bfloat16, 
                                                              low_cpu_mem_usage=True,
-                                                             quantization_config=bnb_config)
+                                                             quantization_config=bnb_config,
+                                                             device_map="auto",
+                                                             attn_implementation="flash_attention_2",)
 
             else:
                 logging.info(f"Loading base model and adding adapter {model_suffix} from {adapter_dir}")
@@ -308,6 +310,8 @@ def generate_and_evaluate(
                         quantization_config=bnb_config,
                         torch_dtype=torch.bfloat16,  # Load in bfloat16 precision
                         low_cpu_mem_usage=True,
+                        device_map="auto",
+                        attn_implementation="flash_attention_2",
                     )
                 model.load_adapter(adapter_dir, adapter_name=model_suffix)
                 model.set_adapter(model_suffix)
@@ -319,6 +323,8 @@ def generate_and_evaluate(
                 quantization_config=bnb_config,
                 torch_dtype=torch.bfloat16,  # Load in bfloat16 precision
                 low_cpu_mem_usage=True,
+                device_map="auto",
+                attn_implementation="flash_attention_2",
             )
                 
         model.resize_token_embeddings(len(tokenizer))
@@ -419,10 +425,10 @@ def main():
     tokenized_etpc_data["original_sentences"] = etpc_prompts
 
     models = [
-       # (args.model_name, None, "base_model"),
+        (args.model_name, None, "base_model"),
         (args.model_name, args.etpc_dir, "etpc_model"),
-        #(args.model_name, args.dpo_dir, "dpo_model"),    # DPO adapter 
-        #(args.model_name, args.ipo_dir, "ipo_model"),    # IPO adapter  
+        (args.model_name, args.dpo_dir, "dpo_model"),    # DPO adapter 
+        (args.model_name, args.ipo_dir, "ipo_model"),    # IPO adapter  
     ]
 
     generate_and_evaluate(tokenizer, models, tokenized_apty_data, tokenized_etpc_data, 
