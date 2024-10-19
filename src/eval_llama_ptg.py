@@ -59,18 +59,30 @@ def create_etpc_prompts(data):
 
     return prompts, references
 
-def read_sentences_by_type(data_dir: str) -> dict[str, list[str]]:
-
+def read_sentences_by_type(data_dir: str) -> dict[str, dict[str, list[str]]]:
     sentences_by_type = {}
 
     for file_name in os.listdir(data_dir):
         if file_name.endswith(".txt"):
-            with open(os.path.join(data_dir, file_name), "r", encoding="utf-8-sig") as file:
-                paraphrase_type = next(file).strip()
-                sentences = [line.strip() for line in file if line.strip()]
-                sentences_by_type[paraphrase_type] = sentences[:10]
+            file_path = os.path.join(data_dir, file_name)
+            try:
+                with open(file_path, "r", encoding="utf-8-sig") as file:
+                    paraphrase_type = next(file).strip()
+                    sentences = [line.strip() for line in file if line.strip()]
+            except UnicodeDecodeError:
+                logging.warning(f"Failed to decode {file_name} with utf-8. Trying ISO-8859-1.")
+                with open(file_path, "r", encoding="ISO-8859-1") as file:
+                    paraphrase_type = next(file).strip()
+                    sentences = [line.strip() for line in file if line.strip()]
+
+            sentences_by_type[paraphrase_type] = {
+                "type": paraphrase_type,
+                "sentences": sentences[:10]
+            }
 
     return sentences_by_type
+
+
 
 def load_tokenizer(model_name: str) -> tuple[PreTrainedTokenizerBase, PreTrainedModel]:
     tokenizer = AutoTokenizer.from_pretrained(model_name, 
@@ -218,6 +230,7 @@ def process_model_generation(
                     "id": hash(original_sentence) % 1000,
                     "original": original_sentence,
                     "dataset": "APTY",
+                    "APT": paraphrase_type,  # Include APT for APTY dataset.
                     "List": []
                 }
             grouped_paraphrases[original_sentence]["List"].append({
@@ -425,10 +438,10 @@ def main():
     tokenized_etpc_data["original_sentences"] = etpc_prompts
 
     models = [
-        (args.model_name, None, "base_model"),
+        #(args.model_name, None, "base_model"),
         (args.model_name, args.etpc_dir, "etpc_model"),
-        (args.model_name, args.dpo_dir, "dpo_model"),    # DPO adapter 
-        (args.model_name, args.ipo_dir, "ipo_model"),    # IPO adapter  
+        #(args.model_name, args.dpo_dir, "dpo_model"),    # DPO adapter 
+        #(args.model_name, args.ipo_dir, "ipo_model"),    # IPO adapter  
     ]
 
     generate_and_evaluate(tokenizer, models, tokenized_apty_data, tokenized_etpc_data, 
