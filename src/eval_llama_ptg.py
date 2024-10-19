@@ -2,15 +2,15 @@ import argparse
 import os
 import json
 import logging
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Any
 import torch
-import chardet
 
 from tqdm import tqdm
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
 from rouge import Rouge
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, PreTrainedModel, PreTrainedTokenizerBase
 import pandas as pd
+from datasets import load_dataset
 
 # Initialize Hugging Face Hub login (if needed)
 from huggingface_hub import login
@@ -23,24 +23,6 @@ login(token=hf_token)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 def parse_arguments():
-    """Parse command-line arguments.
-
-    This function defines and parses the command-line arguments for the script.
-    It uses the argparse library to create an ArgumentParser object, which is
-    then used to parse the command-line arguments.
-
-    The arguments are as follows:
-
-    --model_name: The path to the base model, which is used to generate the
-        paraphrases. The default value is "meta-llama/Llama-2-7b-hf".
-    --etpc_dir: The directory containing the ETPC adapter. The default value
-        is "src/llama/llama-7b-etpc".
-    --dpo_dir: The directory containing the DPO adapter. The default value is
-        "out/dpo_llama-7b_apty".
-
-    Returns:
-        The parsed arguments as a Namespace object.
-    """
     parser = argparse.ArgumentParser(description="Generate paraphrases and evaluate models.")
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B", help="Base model path.")
     parser.add_argument("--etpc_dir", type=str, default="out/gen-models/llama-3.1-8b-etpc", help="ETPC adapter directory.")
@@ -59,36 +41,26 @@ def parse_arguments():
 
     return args
 
-def load_json_data(filename: str, max_examples: int | None = None) -> list[dict]:
-    """
-    Loads data from a JSONL file and limits the number of examples.
+def create_etpc_prompts(data):
+    prompts = []
+    references = []
+    for instance in data:
+        if not instance["paraphrase_types"]:
+            continue
 
-    Args:
-        filename (str): The path to the file to load.
-        max_examples (int, optional): The number of examples to load. Defaults to None.
+        prompt = (
+            "Given the following sentence, generate a"
+            " paraphrase with the following types. Sentence:"
+            f" {instance['sentence1']} Paraphrase Types:"
+            f" {', '.join(instance['paraphrase_types'])}. Generated Paraphrase: "
+        )
+        prompts.append(prompt)
+        references.append(instance["sentence2"])
 
-    Returns:
-        list[dict]: The loaded data as a list of dictionaries.
-    """
-    data = []
-    with open(filename, "r", encoding="utf-8") as file:
-        for line in file:
-            data.append(json.loads(line.strip()))
-            if max_examples is not None and len(data) >= max_examples:
-                break
-
-    return data
-
+    return prompts, references
 
 def read_sentences_by_type(data_dir: str) -> dict[str, list[str]]:
-    """Reads sentences from text files and organizes them by paraphrase type.
 
-    Args:
-        data_dir (str): The path to the directory containing the text files.
-
-    Returns:
-        dict[str, list[str]]: A dictionary with the paraphrase type as key and a list of sentences as value.
-    """
     sentences_by_type = {}
 
     for file_name in os.listdir(data_dir):
@@ -101,16 +73,9 @@ def read_sentences_by_type(data_dir: str) -> dict[str, list[str]]:
     return sentences_by_type
 
 def load_tokenizer(model_name: str) -> tuple[PreTrainedTokenizerBase, PreTrainedModel]:
-    """Load a model and tokenizer, applying PEFT adapters if specified, and ensure padding configuration.
-
-    Args:
-        model_name (str): The name of the model to load.
-        adapter_dir (str, optional): The path to the PEFT adapter to apply. Defaults to None.
-
-    Returns:
-        tuple[PreTrainedTokenizerBase, PreTrainedModel]: The loaded tokenizer and model.
-    """
-    tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left", use_fast=True)
+    tokenizer = AutoTokenizer.from_pretrained(model_name, 
+                                              padding_side="left", 
+                                              use_fast=True)
 
     if tokenizer.pad_token is None:
         tokenizer.add_special_tokens({"pad_token": "<pad>"})
@@ -118,7 +83,7 @@ def load_tokenizer(model_name: str) -> tuple[PreTrainedTokenizerBase, PreTrained
     return tokenizer
 
 def tokenize_data(tokenizer, prompts: List[str]) -> Dict[str, torch.Tensor]:
-    """Tokenizes a list of prompts using the specified tokenizer."""
+
     return tokenizer(
         prompts,
         return_tensors="pt",
@@ -164,20 +129,21 @@ def generate_paraphrases(
     progress_bar.close()
     return paraphrases
 
-def save_metrics_to_csv(metrics_list: List[Dict[str, float]], output_csv_file: str) -> None:
+
+def save_metrics_to_csv(metrics: List[Dict[str, float]], output_csv: str) -> None:
     """
     Save evaluation metrics to a CSV file.
 
     Args:
-        metrics_list (List[Dict[str, float]]): List of dictionaries containing evaluation metrics.
-        output_csv_file (str): Path to the output CSV file.
+        metrics (List[Dict[str, float]]): List of dictionaries containing evaluation metrics.
+        output_csv (str): Path to the output CSV file.
     """
     fieldnames = ["Model", "Adapter", "ROUGE-1", "ROUGE-2", "ROUGE-L", "BLEU"]
 
-    # Use pandas to write the CSV file
-    pd.DataFrame(metrics_list, columns=fieldnames).to_csv(output_csv_file, index=False)
+    # Write the metrics to a CSV file
+    pd.DataFrame(metrics, columns=fieldnames).to_csv(output_csv, index=False)
 
-    logging.info(f"Evaluation metrics saved to {output_csv_file}")    
+    logging.info(f"Evaluation metrics saved to {output_csv}")
 
 def save_paraphrases_to_json(paraphrases_list, output_file_path):
     """
@@ -421,10 +387,17 @@ def main():
         raise ValueError(f"num_examples ({num_examples}) must be divisible by batch_size ({batch_size})")
     output_csv = f"out/gen-models/eval_{args.model_name.split('/')[-1]}.csv"
     output_json = f"out/gen-models/generated_paraphrases_{args.model_name.split('/')[-1]}.json"
-    apty_data = read_sentences_by_type("out/basesentences")
-    etpc_data = load_json_data("out/generation_etpc_test.jsonl", max_examples=num_examples)
-    etpc_prompts = [instance["messages"][0]["content"] for instance in etpc_data]
-    etpc_references = [instance["messages"][1]["content"] for instance in etpc_data]
+    
+    apty_data = read_sentences_by_type("out/basesentences")    
+    etpc_data = (
+        load_dataset("jpwahle/etpc", split="train")
+        .filter(lambda x: x["etpc_label"] == 1)
+        .shuffle(seed=42)
+        .select(range(num_examples)) 
+    )
+
+    # Create prompts and references from the test set
+    etpc_prompts, etpc_references = create_etpc_prompts(etpc_data)
 
     tokenizer = load_tokenizer(args.model_name)
     
