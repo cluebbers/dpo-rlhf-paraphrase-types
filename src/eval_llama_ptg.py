@@ -47,7 +47,18 @@ def parse_arguments():
     parser.add_argument("--etpc_dir", type=str, default="out/gen-models/llama-3.1-8b-etpc", help="ETPC adapter directory.")
     parser.add_argument("--dpo_dir", type=str, default="out/gen-models/dpo_out-gen-models-llama-3.1-8b-etpc_sigmoid", help="DPO adapter directory.")
     parser.add_argument("--ipo_dir", type=str, default="out/gen-models/dpo_meta-llama-Llama-7b-hf_ipo", help="DPO adapter directory.")
-    return parser.parse_args()
+    
+    args = parser.parse_args()
+
+    # Convert the string "None" to actual None
+    if args.etpc_dir == "None":
+        args.etpc_dir = None
+    if args.dpo_dir == "None":
+        args.dpo_dir = None
+    if args.ipo_dir == "None":
+        args.ipo_dir = None
+
+    return args
 
 def load_data(filename, num_examples=None):
     """
