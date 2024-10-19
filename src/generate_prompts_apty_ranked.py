@@ -1,6 +1,5 @@
 import json
 import os
-import random
 import pandas as pd
 from datasets import load_dataset
 from sklearn.model_selection import train_test_split
@@ -113,37 +112,6 @@ def write_to_jsonl(data, filename):
             if not instance["APT"]:
                 continue
             
-            # Find rejected paraphrase types by excluding the ones present in instance["APT"]
-            rejected_paraphrase_types = [ptype for ptype in all_paraphrase_types if ptype not in instance["APT"]]
-
-            # Construct detection entry
-            detection_entry = {
-                "prompt": (
-                            "Given the following two sentences, which of the"
-                            " paraphrase types are changed between them?"
-                            f" Sentence 1: {instance['original']} Sentence 2:"
-                            f" {instance['chosen']} Paraphrase Types:"
-                            " Derivational Changes, Inflectional Changes,"
-                            " Modal Verb Changes, Spelling changes, Change of"
-                            " format, Same Polarity Substitution"
-                            " (contextual), Same Polarity Substitution"
-                            " (habitual), Same Polarity Substitution (named"
-                            " ent.), Converse substitution, Opposite polarity"
-                            " substitution (contextual), Opposite polarity"
-                            " substitution (habitual), Synthetic/analytic"
-                            " substitution, Coordination changes, Diathesis"
-                            " alternation, Ellipsis, Negation switching,"
-                            " Subordination and nesting changes,"
-                            " Direct/indirect style alternations, Punctuation"
-                            " changes, Syntax/discourse structure changes,"
-                            " Entailment, Identity, Non-paraphrase,"
-                            " Addition/Deletion, Change of order,"
-                            " Semantic-based"
-                        ),
-                        "chosen": f" {instance['APT']}",
-                        "rejected": f"{', '.join(rejected_paraphrase_types)}",
-                    }
-
             # Construct generation entry
             generation_entry = {
                 "prompt": (
@@ -157,10 +125,7 @@ def write_to_jsonl(data, filename):
             }
 
             # Write entries to the respective files
-            if "detection" in filename:
-                file.write(json.dumps(detection_entry, ensure_ascii=False) + "\n")
-            else:
-                file.write(json.dumps(generation_entry, ensure_ascii=False) + "\n")
+            file.write(json.dumps(generation_entry, ensure_ascii=False) + "\n")
 
 def main():
     """Create JSONL files for the APTY-ranked dataset."""
@@ -172,7 +137,7 @@ def main():
 
     # Split dataset into train and test sets
     train_df, test_df = train_test_split(
-        df, test_size=0.3, stratify=df["APT"], random_state=42
+        df, test_size=0.2, stratify=df["APT"], random_state=42
     )
 
     # Convert DataFrames to lists of dictionaries
@@ -185,8 +150,6 @@ def main():
         os.makedirs(output_dir)
 
     # Write to JSONL files
-    write_to_jsonl(train_data, os.path.join(output_dir, "detection_apty_ranked_train.jsonl"))
-    write_to_jsonl(test_data, os.path.join(output_dir, "detection_apty_ranked_test.jsonl"))
     write_to_jsonl(train_data, os.path.join(output_dir, "generation_apty_ranked_train.jsonl"))
     write_to_jsonl(test_data, os.path.join(output_dir, "generation_apty_ranked_test.jsonl"))
 
