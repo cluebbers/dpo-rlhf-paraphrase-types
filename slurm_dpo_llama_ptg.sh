@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --gpus=V100:1
+#SBATCH --gpus=1
 #SBATCH --time=12:00:00
 #SBATCH --mail-type=all
 #SBATCH --mail-user=c.luebbers@stud.uni-goettingen.de 
@@ -46,5 +46,6 @@ python3 src/dpo_llama_ptg.py --model_name $1 --adapter_dir $2 --loss_type $3
 # sbatch slurm_dpo_llama_ptg.sh out/gen-models/llama-3.1-8b-etpc None ipo
 
 #TODO
+# sbatch slurm_dpo_llama_ptg.sh meta-llama/Llama-3.1-70b None sigmoid
 # sbatch slurm_dpo_llama_ptg.sh meta-llama/Llama-3.1-70b out/gen-models/llama-3.1-70b-etpc sigmoid
 # sbatch slurm_dpo_llama_ptg.sh meta-llama/Llama-3.1-70b out/gen-models/llama-3.1-70b-etpc ipo
