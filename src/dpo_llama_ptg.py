@@ -4,7 +4,7 @@ import torch
 import os
 from datasets import load_dataset, DatasetDict
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
-from peft import PeftModel, PeftConfig, LoraConfig
+from peft import PeftModel, PeftConfig, LoraConfig, TaskType, get_peft_model
 from trl import DPOTrainer, DPOConfig
 from huggingface_hub import login
 
@@ -79,27 +79,32 @@ def load_model_and_tokenizer(model_name, adapter_dir, device):
     tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B", padding_side="left", padding="longest")
     tokenizer.pad_token = tokenizer.eos_token
 
-    # If no adapter_dir is provided, create a new adapter configuration using LoRA
-    if adapter_dir is None:
-        logging.info("No adapter_dir provided. Adding a new LoRA adapter.")
-        # Define a simple LoRA configuration
-        peft_config = LoraConfig(
-            r=8,  # Rank for LoRA matrices
-            lora_alpha=32,  # Alpha scaling
-            target_modules=["q_proj", "v_proj"],  # Apply LoRA to these layers
-            lora_dropout=0.05,
-            bias="none"
-        )
-        model = PeftModel(model, peft_config)
-    else:
-        # Load and attach PEFT adapter if provided
+    # Check if the model has an adapter merged or needs an external adapter
+    if adapter_dir:
+        # If an adapter_dir is provided, assume that the base model needs it.
         logging.info(f"Loading PEFT adapter from {adapter_dir}")
         peft_config = PeftConfig.from_pretrained(adapter_dir)
         peft_config.base_model_name_or_path = model_name
-        model = PeftModel.from_pretrained(model, adapter_dir, config=peft_config)
-
+        model = PeftModel.from_pretrained(model, adapter_dir, config=peft_config, is_trainable=True)
+        
         # Load the reference adapter
         model.load_adapter(adapter_dir, adapter_name="reference")
+    else:
+        # If no adapter_dir is provided, check if the model is already merged.
+        if hasattr(model.config, "peft_type") and model.config.peft_type is not None:
+            logging.info("Model is already merged with the adapter configuration.")
+        else:
+            # Otherwise, add a new LoRA adapter if it's not merged.
+            logging.info("No adapter_dir provided and no merged adapter found. Adding a new LoRA adapter.")
+            peft_config = LoraConfig(
+                task_type=TaskType.CAUSAL_LM,
+                r=8,  # Rank for LoRA matrices
+                lora_alpha=32,  # Alpha scaling
+                target_modules=["q_proj", "v_proj"],  # Apply LoRA to these layers
+                lora_dropout=0.05,
+                bias="none"
+            )
+            model = get_peft_model(model, peft_config)
 
     # If using 4-bit quantization, do not manually move the model to the device
     if not bnb_config.load_in_4bit:
