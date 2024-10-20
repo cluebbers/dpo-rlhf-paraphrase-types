@@ -313,7 +313,7 @@ def generate_and_evaluate(
                                                              torch_dtype=torch.bfloat16, 
                                                              low_cpu_mem_usage=True,
                                                              quantization_config=bnb_config,
-                                                             device_map="auto",
+                                                             #device_map="auto",
                                                              attn_implementation="flash_attention_2",)
 
             else:
@@ -323,7 +323,7 @@ def generate_and_evaluate(
                         quantization_config=bnb_config,
                         torch_dtype=torch.bfloat16,  # Load in bfloat16 precision
                         low_cpu_mem_usage=True,
-                        device_map="auto",
+                        #device_map="auto",
                         attn_implementation="flash_attention_2",
                     )
                 model.load_adapter(adapter_dir, adapter_name=model_suffix)
@@ -336,7 +336,7 @@ def generate_and_evaluate(
                 quantization_config=bnb_config,
                 torch_dtype=torch.bfloat16,  # Load in bfloat16 precision
                 low_cpu_mem_usage=True,
-                device_map="auto",
+                #device_map="auto",
                 attn_implementation="flash_attention_2",
             )
                 
@@ -438,10 +438,10 @@ def main():
     tokenized_etpc_data["original_sentences"] = etpc_prompts
 
     models = [
-        #(args.model_name, None, "base_model"),
+        (args.model_name, None, "base_model"),
         (args.model_name, args.etpc_dir, "etpc_model"),
-        #(args.model_name, args.dpo_dir, "dpo_model"),    # DPO adapter 
-        #(args.model_name, args.ipo_dir, "ipo_model"),    # IPO adapter  
+        (args.model_name, args.dpo_dir, "dpo_model"),    # DPO adapter 
+        (args.model_name, args.ipo_dir, "ipo_model"),    # IPO adapter  
     ]
 
     generate_and_evaluate(tokenizer, models, tokenized_apty_data, tokenized_etpc_data, 
