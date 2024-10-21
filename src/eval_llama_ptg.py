@@ -59,12 +59,13 @@ def create_etpc_prompts(data):
 
     return prompts, references
 
-def read_sentences_by_type(data_dir: str) -> dict[str, dict[str, list[str]]]:
+def read_sentences_by_type(data_dir: str, num_examples: int) -> dict[str, dict[str, list[str]]]:
     sentences_by_type = {}
 
     for file_name in os.listdir(data_dir):
-        if file_name.endswith(".txt"):
-            file_path = os.path.join(data_dir, file_name)
+        file_path = os.path.join(data_dir, file_name)
+        if os.path.isfile(file_path) and file_name.endswith(".txt"):
+            print(f"Processing file: {file_name}")
             try:
                 with open(file_path, "r", encoding="utf-8-sig") as file:
                     paraphrase_type = next(file).strip()
@@ -74,13 +75,22 @@ def read_sentences_by_type(data_dir: str) -> dict[str, dict[str, list[str]]]:
                 with open(file_path, "r", encoding="ISO-8859-1") as file:
                     paraphrase_type = next(file).strip()
                     sentences = [line.strip() for line in file if line.strip()]
+            sentences = sentences[:num_examples]
+            if paraphrase_type not in sentences_by_type:
+                sentences_by_type[paraphrase_type] = {
+                    "type": paraphrase_type,
+                    "sentences": sentences[:num_examples]
+                }
+            else:
+                sentences_by_type[paraphrase_type]["sentences"].extend(sentences[:num_examples])
+                # Ensure no duplicates if needed
+                sentences_by_type[paraphrase_type]["sentences"] = list(set(sentences_by_type[paraphrase_type]["sentences"]))
 
-            sentences_by_type[paraphrase_type] = {
-                "type": paraphrase_type,
-                "sentences": sentences[:10]
-            }
+            print(f"Loaded {len(sentences)} sentences for type {paraphrase_type}")
+    print(f"Loaded {len(sentences_by_type)} sentences for type {paraphrase_type}")
 
     return sentences_by_type
+
 
 
 
@@ -215,8 +225,13 @@ def process_model_generation(
     grouped_paraphrases = {}
 
     # Generate paraphrases for APTY dataset
+    print(f"length of tokenized_apty_data: {len(tokenized_apty_data)}")
     for paraphrase_type, tokenized_inputs in tokenized_apty_data.items():
         input_token_len = tokenized_inputs["input_ids"].shape[-1]
+        print(f"Number of sentences for {paraphrase_type}: {len(tokenized_inputs['original_sentences'])}")
+        print(f"Number of tokenized inputs: {tokenized_inputs['input_ids'].shape[0]}")
+
+
         paraphrases = generate_paraphrases(
             model,
             tokenizer,
@@ -307,7 +322,7 @@ def generate_and_evaluate(
     for model_name, adapter_dir, model_suffix in models:
         
         if adapter_dir:
-            if any(file.endswith(".safetensors") for file in os.listdir(adapter_dir)):
+            if os.path.exists(os.path.join(adapter_dir, "model.safetensors.index.json")):
                 logging.info(f"Loading merged model {model_suffix} from {adapter_dir}")                
                 model = AutoModelForCausalLM.from_pretrained(adapter_dir, 
                                                              torch_dtype=torch.bfloat16, 
@@ -346,10 +361,12 @@ def generate_and_evaluate(
         model.eval()
 
         # Generate paraphrases including evaluation metrics
+        print("About to call process_model_generation")
         paraphrases = process_model_generation(
             model, tokenizer, tokenized_apty_data, tokenized_etpc_data, 
             etpc_references, model_suffix, batch_size
         )
+        print("Finished calling process_model_generation")
 
         # Merge paraphrases into all_paraphrases dictionary
         for original_sentence, details in paraphrases.items():
@@ -394,6 +411,7 @@ def generate_and_evaluate(
         }
         for details in all_paraphrases.values()
     ]
+    
 
     save_paraphrases_to_json(json_paraphrases, output_json)
     save_metrics_to_csv(metrics, output_csv)
@@ -401,13 +419,13 @@ def generate_and_evaluate(
 def main():
     args = parse_arguments()
     batch_size = 10  
-    num_examples = 10
-    if num_examples % batch_size != 0:
-        raise ValueError(f"num_examples ({num_examples}) must be divisible by batch_size ({batch_size})")
+    num_examples = 1
+    # if num_examples % batch_size != 0:
+    #     raise ValueError(f"num_examples ({num_examples}) must be divisible by batch_size ({batch_size})")
     output_csv = f"out/gen-models/eval_{args.model_name.split('/')[-1]}.csv"
     output_json = f"out/gen-models/generated_paraphrases_{args.model_name.split('/')[-1]}.json"
     
-    apty_data = read_sentences_by_type("out/basesentences")    
+    apty_data = read_sentences_by_type("out/basesentences", num_examples=num_examples)    
     etpc_data = (
         load_dataset("jpwahle/etpc", split="train")
         .filter(lambda x: x["etpc_label"] == 1)
@@ -421,6 +439,7 @@ def main():
     tokenizer = load_tokenizer(args.model_name)
     
     # Pre-tokenize APTY data
+# Pre-tokenize APTY data
     tokenized_apty_data = {
         paraphrase_type: {
             **tokenize_data(tokenizer, [
@@ -428,10 +447,12 @@ def main():
                 f"Sentence: {sentence} Paraphrase Type: {paraphrase_type}. Generated Paraphrase: "
                 for sentence in sentences
             ]),
-            "original_sentences": sentences
+            "original_sentences": sentences  # Ensure this matches the number of input_ids
         }
-        for paraphrase_type, sentences in apty_data.items()
+        for paraphrase_type, details in apty_data.items()
+        for sentences in [details["sentences"][:num_examples]]  # Limit to `num_examples`
     }
+    print(tokenized_apty_data)
 
     # Pre-tokenize ETPC data
     tokenized_etpc_data = tokenize_data(tokenizer, etpc_prompts)
@@ -439,9 +460,9 @@ def main():
 
     models = [
         (args.model_name, None, "base_model"),
-        (args.model_name, args.etpc_dir, "etpc_model"),
-        (args.model_name, args.dpo_dir, "dpo_model"),    # DPO adapter 
-        (args.model_name, args.ipo_dir, "ipo_model"),    # IPO adapter  
+        #(args.model_name, args.etpc_dir, "etpc_model"),
+        #(args.model_name, args.dpo_dir, "dpo_model"),    # DPO adapter 
+        #(args.model_name, args.ipo_dir, "ipo_model"),    # IPO adapter  
     ]
 
     generate_and_evaluate(tokenizer, models, tokenized_apty_data, tokenized_etpc_data, 
