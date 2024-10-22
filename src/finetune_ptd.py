@@ -29,12 +29,37 @@ TOP_10_PARAPHRASE_TYPES = [
 ]
 
 def write_results_to_csv(results, output_file="evaluation_results.csv"):
-    """Writes evaluation results to a CSV file."""
+    """Writes evaluation results to a CSV file, including the classification report."""
     with open(output_file, mode="w", newline="") as file:
         writer = csv.writer(file)
         writer.writerow(["Metric", "Value"])
+
+        # Write standard metrics (excluding 'eval_classification_report')
         for key, value in results.items():
-            writer.writerow([key, value])
+            if key != "eval_classification_report":
+                writer.writerow([key, value])
+
+        # Extract the classification report using the correct key
+        report = results.get("eval_classification_report", {})
+
+
+        writer.writerow([])  # Add an empty row for readability
+        writer.writerow(["Classification Report"])
+        writer.writerow(["Paraphrase Type", "Precision", "Recall", "F1-score", "Support"])
+
+        # Iterate over each label and write the metrics
+        for label, metrics in report.items():
+            if isinstance(metrics, dict):
+                writer.writerow([
+                    label,
+                    metrics.get('precision', 'N/A'),
+                    metrics.get('recall', 'N/A'),
+                    metrics.get('f1-score', 'N/A'),
+                    metrics.get('support', 'N/A')
+                ])
+            else:
+                # Handle average metrics like 'micro avg', 'macro avg', etc.
+                writer.writerow([label, metrics])
 
         print(f"Results written to {output_file}")
 
@@ -142,7 +167,8 @@ def compute_metrics(predictions, labels, cls_id2label):
         'accuracy': accuracy,
         'precision': precision,
         'recall': recall,
-        'f1': f1
+        'f1': f1,
+        'classification_report': report
     }
 
 def split_dataset_by_type(
@@ -192,11 +218,6 @@ def split_dataset_by_type(
         num_examples = len(examples)
         print(f"Type {ptype} has {num_examples} examples")  # Debugging output
         
-        if num_examples < min_samples:
-            print(f"Skipping {ptype} due to insufficient samples ({num_examples} < {min_samples})")
-            continue  # Skip types with fewer than the minimum required samples
-        
-        examples = random.sample(examples, min(num_examples, max_samples))
         split_idx = int(train_percent * len(examples))
         train_subset = examples[:split_idx]
         test_subset = examples[split_idx:]
@@ -255,11 +276,10 @@ def main():
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, clean_up_tokenization_spaces=True)
 
     # Count paraphrase types before splitting
+    
     pre_split_type_counts = count_paraphrase_types(dataset)
-    print("Number of paraphrase types before splitting:")
-    for ptype, count in pre_split_type_counts.items():
-        print(f"{ptype}: {count}")
-        
+    print(f"Number of paraphrase types before splitting: {pre_split_type_counts}")
+
     label_maps = create_label_maps()
     _, cls_id2label, paraphrase_type2cls_id, _, _ = label_maps
 
@@ -283,21 +303,49 @@ def main():
     config = AutoConfig.from_pretrained(args.model_name, num_labels=num_labels, problem_type="multi_label_classification")
     
     def model_init(trial=None):
+        class_weights = torch.tensor([
+        0.2259265999213708, 
+        3.220232406121911, 
+        0.35486436950141176, 
+        0.9969864692714715, 
+        4.172419625825067, 
+        8.297736959636888, 
+        8.595439973331159, 
+        9.962680162343734, 
+        0.14255471526284638, 
+        0.21035107399865138
+    ], dtype=torch.float32)
+        
         model = AutoModelForSequenceClassification.from_pretrained(
             args.model_name, config=config, ignore_mismatched_sizes=True
         )
+        
+        loss_fn = nn.BCEWithLogitsLoss(pos_weight=class_weights)
+        
+        def compute_loss(model, inputs, return_outputs=False):
+            labels = inputs.pop("labels")
+            outputs = model(**inputs)
+            logits = outputs.logits
+            loss = loss_fn(logits, labels)
+            return (loss, outputs) if return_outputs else loss
+
+        model.compute_loss = compute_loss
+        
+        
         return model
 
     trainer = Trainer(
         model_init=lambda trial: model_init(trial),  # Pass the trial object to model_init
         args=TrainingArguments(
             output_dir=f"./out/cls-models/{args.model_name.split('/')[-1]}_etpc_ptd", 
-            per_device_train_batch_size=32, 
+            per_device_train_batch_size=16,
+            learning_rate=4.0975283438994273e-05,
+            weight_decay=0.0,
             eval_strategy="epoch",
             save_strategy="epoch",
             save_total_limit=1,
             fp16=True,
-            num_train_epochs=5,
+            num_train_epochs=1,
             metric_for_best_model='f1',
             load_best_model_at_end=True,
             greater_is_better=True,
@@ -310,17 +358,17 @@ def main():
     )
 
     # Perform the hyperparameter search using Optuna
-    best_run = trainer.hyperparameter_search(
-        direction="maximize",
-        hp_space=hyperparameter_space,
-        n_trials=20,
-        backend="optuna"
-    )
+    # best_run = trainer.hyperparameter_search(
+    #     direction="maximize",
+    #     hp_space=hyperparameter_space,
+    #     n_trials=20,
+    #     backend="optuna"
+    # )
 
     # Apply the best hyperparameters found by the search
-    trainer.args.learning_rate = best_run.hyperparameters['learning_rate']
-    trainer.args.weight_decay = best_run.hyperparameters['weight_decay']
-    trainer.args.per_device_train_batch_size = best_run.hyperparameters['per_device_train_batch_size']
+    # trainer.args.learning_rate = best_run.hyperparameters['learning_rate']
+    # trainer.args.weight_decay = best_run.hyperparameters['weight_decay']
+    # trainer.args.per_device_train_batch_size = best_run.hyperparameters['per_device_train_batch_size']
 
     # Continue training with the best hyperparameters
     trainer.train()
