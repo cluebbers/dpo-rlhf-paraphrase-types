@@ -62,58 +62,85 @@ class ParaphraseTypeEvaluator:
         return predicted_types
 
     def evaluate(self, json_file_path: str) -> pd.DataFrame:
-        with open(json_file_path, 'r', encoding='utf-8') as file:
-            data = json.load(file)
-        
-        model_scores = {}
-        single_accuracies = {}
-        paraphrase_samples = []
-
-        for entry in data:
-            reference = entry["data"]["Original"]
-            true_types = self.preprocess_apt(entry["data"]["APT"])
-            model_name = entry["data"]["Kind"]
+            with open(json_file_path, 'r', encoding='utf-8') as file:
+                data = json.load(file)
             
-            # Extract and clean the paraphrase text from the list.
-            paraphrase = self.extract_paraphrase(entry["data"]["Paraphrase"])
-            paraphrase_samples.append(paraphrase)  # Store for debugging
-            true_labels = [1 if ptype in true_types else 0 for ptype in TOP_10_PARAPHRASE_TYPES]
-            predicted_types = self.predict_paraphrase_types(reference, paraphrase)
-            pred_labels = [1 if ptype in predicted_types else 0 for ptype in TOP_10_PARAPHRASE_TYPES]
-            f1 = f1_score(true_labels, pred_labels, average="macro", zero_division=0)
+            model_scores = {}
+            single_accuracies = {}
+            type_accuracies = {ptype: {} for ptype in TOP_10_PARAPHRASE_TYPES}
+            paraphrase_samples = []
 
-            # Calculate single accuracy: if any true type is in predicted types.
-            correct_prediction = any(ptype in predicted_types for ptype in true_types)
-            if model_name not in single_accuracies:
-                single_accuracies[model_name] = {"correct": 0, "total": 0}
-            single_accuracies[model_name]["correct"] += int(correct_prediction)
-            single_accuracies[model_name]["total"] += 1
+            for entry in data:
+                reference = entry["data"]["Original"]
+                true_types = self.preprocess_apt(entry["data"]["APT"])
+                model_name = entry["data"]["Kind"]
+                
+                # Extract and clean the paraphrase text from the list.
+                paraphrase = self.extract_paraphrase(entry["data"]["Paraphrase"])
+                paraphrase_samples.append(paraphrase)  # Store for debugging
+                true_labels = [1 if ptype in true_types else 0 for ptype in TOP_10_PARAPHRASE_TYPES]
+                predicted_types = self.predict_paraphrase_types(reference, paraphrase)
+                pred_labels = [1 if ptype in predicted_types else 0 for ptype in TOP_10_PARAPHRASE_TYPES]
+                f1 = f1_score(true_labels, pred_labels, average="macro", zero_division=0)
 
-            # Store F1 scores by model
-            if model_name not in model_scores:
-                model_scores[model_name] = []
-            model_scores[model_name].append(f1)
+                # Calculate single accuracy: if any true type is in predicted types.
+                correct_prediction = any(ptype in predicted_types for ptype in true_types)
+                if model_name not in single_accuracies:
+                    single_accuracies[model_name] = {"correct": 0, "total": 0}
+                single_accuracies[model_name]["correct"] += int(correct_prediction)
+                single_accuracies[model_name]["total"] += 1
 
-        # Calculate the average F1 score for each model
-        avg_model_scores = {
-            model: np.mean(scores) for model, scores in model_scores.items()
-        }
+                # Store F1 scores by model
+                if model_name not in model_scores:
+                    model_scores[model_name] = []
+                model_scores[model_name].append(f1)
 
-        # Calculate single accuracy for each model
-        model_single_accuracies = {
-            model: (counts["correct"] / counts["total"]) * 100 if counts["total"] > 0 else 0
-            for model, counts in single_accuracies.items()
-        }
+                # Update type-specific accuracies.
+                for ptype in TOP_10_PARAPHRASE_TYPES:
+                    if model_name not in type_accuracies[ptype]:
+                        type_accuracies[ptype][model_name] = {"correct": 0, "total": 0}
+                    if ptype in true_types:
+                        type_accuracies[ptype][model_name]["total"] += 1
+                        if ptype in predicted_types:
+                            type_accuracies[ptype][model_name]["correct"] += 1
 
-        # Create a DataFrame from the average scores and single accuracies
-        df = pd.DataFrame(
-            [
-                {"Model": model, "Average F1 Score": avg_model_scores[model], "Single Accuracy": model_single_accuracies[model]}
-                for model in avg_model_scores
-            ]
-        )
-        
-        return df
+            # Calculate the average F1 score for each model
+            avg_model_scores = {
+                model: np.mean(scores) for model, scores in model_scores.items()
+            }
+
+            # Calculate single accuracy for each model
+            model_single_accuracies = {
+                model: (counts["correct"] / counts["total"]) * 100 if counts["total"] > 0 else 0
+                for model, counts in single_accuracies.items()
+            }
+
+            # Calculate type-specific accuracy for each model and paraphrase type
+            model_type_accuracies = {
+                ptype: {
+                    model: (counts["correct"] / counts["total"]) * 100 if counts["total"] > 0 else 0
+                    for model, counts in type_accuracies[ptype].items()
+                }
+                for ptype in TOP_10_PARAPHRASE_TYPES
+            }
+
+            # Create a DataFrame from the scores, including the type-specific accuracies
+            df_data = []
+            for model in avg_model_scores:
+                row = {
+                    "Model": model,
+                    "Average F1 Score": avg_model_scores[model],
+                    "Single Accuracy": model_single_accuracies[model]
+                }
+                # Add each paraphrase type's accuracy to the row
+                for ptype in TOP_10_PARAPHRASE_TYPES:
+                    row[f"{ptype} accuracy"] = model_type_accuracies[ptype].get(model, 0)
+                df_data.append(row)
+
+            # Convert to DataFrame
+            df = pd.DataFrame(df_data)
+            
+            return df
 
 # Example usage:
 evaluator = ParaphraseTypeEvaluator(model_name="out/cls-models/deberta-base_qqp_pd_etpc_ptd/run-16/checkpoint-184")
