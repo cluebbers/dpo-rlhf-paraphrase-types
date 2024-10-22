@@ -175,11 +175,6 @@ def compute_metrics(predictions, labels):
         labels, preds, target_names=target_names, output_dict=True
     )
 
-    # Print out support counts for each paraphrase type
-    for label, metrics in report.items():
-        if isinstance(metrics, dict):
-            print(f"{label}: support = {metrics['support']}")
-            
     global detailed_classification_report
     detailed_classification_report = report
 
@@ -207,55 +202,47 @@ def split_dataset_by_type(
     max_samples: int = 400
 ) -> Tuple[Dataset, Dataset, Dict[str, int], Dict[str, int]]:
     """
-    Split dataset by paraphrase type while ensuring each paraphrase type has 
-    at least `min_samples` and at most `max_samples` examples. Filter out sentences with paraphrase types 
-    not in the TOP 10 list.
+    Split dataset by paraphrase type, ensuring a balanced distribution of paraphrase types 
+    in both train and test datasets. Each example can belong to multiple paraphrase types.
     """
-    print(f"Dataset counts: {count_paraphrase_types(dataset)}")
-    
     paraphrase_type_to_examples: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     type_counts: Dict[str, int] = defaultdict(int)
-
+    
     # Normalize TOP_10_PARAPHRASE_TYPES to lowercase for consistent comparison
     normalized_top_10_types = [ptype.strip().lower() for ptype in TOP_10_PARAPHRASE_TYPES]
 
-    # Step 2: Filter the dataset and group examples by their paraphrase types
+    # Step 1: Filter the dataset and group examples by their paraphrase types
     filtered_examples = []
     for example in dataset:
         if "paraphrase_types" not in example:
             continue
 
-        # Normalize the paraphrase types in the dataset to lowercase and strip spaces
+        # Normalize and filter paraphrase types
         filtered_types = [ptype.strip().lower() for ptype in example["paraphrase_types"] if ptype.strip().lower() in normalized_top_10_types]
         
-        # If no paraphrase type from TOP_10_PARAPHRASE_TYPES, skip this sample
         if not filtered_types:
             continue
-
-        # Track this example for each paraphrase type it has
+        
         example["paraphrase_types"] = filtered_types
         filtered_examples.append(example)
+        
+        # Track examples for each paraphrase type
         for ptype in filtered_types:
             paraphrase_type_to_examples[ptype].append(example)
             type_counts[ptype] += 1
 
-    # Check if any examples remain after filtering
-    if not filtered_examples:
-        print("No examples remain after filtering. Please check the dataset structure and filtering logic.")
-        return Dataset.from_list([]), Dataset.from_list([]), {}, {}
-
-    # Adjust counts to consider a balanced distribution per paraphrase type
+    # Step 2: Adjust counts to balance data by paraphrase type
     adjusted_counts = {ptype: min(max(count, min_samples), max_samples) for ptype, count in type_counts.items()}
 
-    train_examples: List[Dict[str, Any]] = []
-    test_examples: List[Dict[str, Any]] = defaultdict(list)
-    
-    # Step 3: Downsampling and balanced splitting into train/test
-    for ptype, examples in paraphrase_type_to_examples.items():
-        # Use adjusted count for downsampling
-        examples = examples[:adjusted_counts[ptype]]
+    train_examples = []
+    test_examples = defaultdict(list)
 
-        # Calculate the split index for train/test
+    # Step 3: Balanced splitting into train and test sets
+    for ptype, examples in paraphrase_type_to_examples.items():
+        # Use adjusted counts for downsampling
+        examples = random.sample(examples, adjusted_counts[ptype])
+
+        # Split the examples into train/test sets for this paraphrase type
         split_idx = int(train_percent * len(examples))
         train_subset = examples[:split_idx]
         test_subset = examples[split_idx:]
@@ -263,15 +250,15 @@ def split_dataset_by_type(
         train_examples.extend(train_subset)
         test_examples[ptype].extend(test_subset)
 
-    # Deduplicate examples based on their 'idx' field to avoid duplicates in training and testing sets
+    # Step 4: Remove duplicates based on unique 'idx' field
     train_examples = list({ex['idx']: ex for ex in train_examples}.values())
     test_examples_flat = list({ex['idx']: ex for ex in [ex for sublist in test_examples.values() for ex in sublist]}.values())
 
-    # Create train and test datasets
+    # Step 5: Create train and test datasets
     train_dataset = Dataset.from_list(train_examples)
     test_dataset = Dataset.from_list(test_examples_flat)
 
-    # Use the existing count_paraphrase_types function to count occurrences in the train and test sets
+    # Step 6: Use the existing count_paraphrase_types function to count occurrences
     train_type_counts = count_paraphrase_types(train_dataset)
     test_type_counts = count_paraphrase_types(test_dataset)
 
@@ -281,6 +268,7 @@ def split_dataset_by_type(
 
     # Return datasets and counts
     return train_dataset, test_dataset, train_type_counts, test_type_counts
+
 
 
 
@@ -331,29 +319,41 @@ def main():
     # Split the dataset into training and testing sets with type counts
     train_dataset, test_dataset, train_type_counts, test_type_counts = split_dataset_by_type(dataset_tokenized, train_percent=0.8, min_samples=100, max_samples=400)
     
-    num_labels = len(paraphrase_type2cls_id)
-    config = AutoConfig.from_pretrained(args.model_name, num_labels=num_labels, problem_type="multi_label_classification")
     
     def model_init(trial=None):
-        class_weights = torch.tensor([
-        0.2259265999213708, 
-        3.220232406121911, 
-        0.35486436950141176, 
-        0.9969864692714715, 
-        4.172419625825067, 
-        8.297736959636888, 
-        8.595439973331159, 
-        9.962680162343734, 
-        0.14255471526284638, 
-        0.21035107399865138
-    ], dtype=torch.float32)
-        
+        # Use default weights if no trial is provided (e.g., when not performing hyperparameter search)
+        if trial is not None:
+            # Extract class weights from the trial
+            class_weights = torch.tensor([
+                trial.suggest_float(f"class_weight_{i}", 0.1, 10.0, log=True) for i in range(len(TOP_10_PARAPHRASE_TYPE_TO_ID))
+            ], dtype=torch.float32)
+        else:
+            class_weights = torch.tensor([
+                0.2259265999213708, 
+                3.220232406121911, 
+                0.35486436950141176, 
+                0.9969864692714715, 
+                4.172419625825067, 
+                8.297736959636888, 
+                8.595439973331159, 
+                9.962680162343734, 
+                0.14255471526284638, 
+                0.21035107399865138
+            ], dtype=torch.float32)
+
+        config = AutoConfig.from_pretrained(
+            args.model_name, 
+            num_labels=len(TOP_10_PARAPHRASE_TYPE_TO_ID), 
+            problem_type="multi_label_classification"
+        )
+
         model = AutoModelForSequenceClassification.from_pretrained(
             args.model_name, config=config, ignore_mismatched_sizes=True
         )
-        
+
+        # Use the sampled class weights in the loss function
         loss_fn = nn.BCEWithLogitsLoss(pos_weight=class_weights)
-        
+
         def compute_loss(model, inputs, return_outputs=False):
             labels = inputs.pop("labels")
             outputs = model(**inputs)
@@ -362,22 +362,21 @@ def main():
             return (loss, outputs) if return_outputs else loss
 
         model.compute_loss = compute_loss
-        
-        
         return model
+
 
     trainer = Trainer(
         model_init=lambda trial: model_init(trial),  # Pass the trial object to model_init
         args=TrainingArguments(
             output_dir=f"./out/cls-models/{args.model_name.split('/')[-1]}_etpc_ptd", 
-            per_device_train_batch_size=16,
-            learning_rate=4.0975283438994273e-05,
-            weight_decay=0.0,
+            #per_device_train_batch_size=16,
+            #learning_rate=4.0975283438994273e-05,
+            #weight_decay=0.0,
             eval_strategy="epoch",
             save_strategy="epoch",
             save_total_limit=1,
             fp16=True,
-            num_train_epochs=1,
+            num_train_epochs=3,
             metric_for_best_model='f1',
             load_best_model_at_end=True,
             greater_is_better=True,
@@ -390,20 +389,22 @@ def main():
     )
 
     # Perform the hyperparameter search using Optuna
-    # best_run = trainer.hyperparameter_search(
-    #     direction="maximize",
-    #     hp_space=hyperparameter_space,
-    #     n_trials=20,
-    #     backend="optuna"
-    # )
+    best_run = trainer.hyperparameter_search(
+        direction="maximize",
+        hp_space=hyperparameter_space,
+        n_trials=10,
+        backend="optuna"
+    )
 
     # Apply the best hyperparameters found by the search
-    # trainer.args.learning_rate = best_run.hyperparameters['learning_rate']
-    # trainer.args.weight_decay = best_run.hyperparameters['weight_decay']
-    # trainer.args.per_device_train_batch_size = best_run.hyperparameters['per_device_train_batch_size']
+    trainer.args.learning_rate = best_run.hyperparameters['learning_rate']
+    trainer.args.weight_decay = best_run.hyperparameters['weight_decay']
+    trainer.args.per_device_train_batch_size = best_run.hyperparameters['per_device_train_batch_size']
 
-    # Continue training with the best hyperparameters
-    
+    # Extract the best class weights for further use or logging
+    best_class_weights = [best_run.hyperparameters[f'class_weight_{i}'] for i in range(len(TOP_10_PARAPHRASE_TYPE_TO_ID))]
+    print(f"Best class weights: {best_class_weights}")
+        
     # Print a few examples from the train and test datasets to verify labels
     trainer.train()
 
