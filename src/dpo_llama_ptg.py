@@ -60,11 +60,9 @@ def login_to_huggingface(token_path="token_file.txt"):
     Returns:
         None
     """
-    logging.info(f"Logging into Hugging Face Hub using token from {token_path}")
     with open(token_path, "r") as token_file:
         hf_token = token_file.read().strip()
     login(token=hf_token)
-    logging.info("Logged into Hugging Face Hub")   
     
      
 def load_model_and_tokenizer(model_name, adapter_dir, device):
@@ -75,42 +73,34 @@ def load_model_and_tokenizer(model_name, adapter_dir, device):
 
     # Load model and tokenizer
     model = AutoModelForCausalLM.from_pretrained(model_name, quantization_config=bnb_config)
-    #TODO make variable for model
     tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B", padding_side="left", padding="longest")
     tokenizer.pad_token = tokenizer.eos_token
 
-    # Check if the model has an adapter merged or needs an external adapter
+    # Load adapter if specified, otherwise check or add LoRA adapter
     if adapter_dir:
-        # If an adapter_dir is provided, assume that the base model needs it.
         logging.info(f"Loading PEFT adapter from {adapter_dir}")
         peft_config = PeftConfig.from_pretrained(adapter_dir)
         peft_config.base_model_name_or_path = model_name
         model = PeftModel.from_pretrained(model, adapter_dir, config=peft_config, is_trainable=True)
-        
-        # Load the reference adapter
         model.load_adapter(adapter_dir, adapter_name="reference")
+    elif not hasattr(model.config, "peft_type") or model.config.peft_type is None:
+        logging.info("Adding a new LoRA adapter as no adapter_dir is provided and no merged adapter found.")
+        peft_config = LoraConfig(
+            task_type=TaskType.CAUSAL_LM,
+            r=8,  
+            lora_alpha=32,  
+            target_modules=["q_proj", "v_proj"],
+            lora_dropout=0.05,
+            bias="none"
+        )
+        model = get_peft_model(model, peft_config)
     else:
-        # If no adapter_dir is provided, check if the model is already merged.
-        if hasattr(model.config, "peft_type") and model.config.peft_type is not None:
-            logging.info("Model is already merged with the adapter configuration.")
-        else:
-            # Otherwise, add a new LoRA adapter if it's not merged.
-            logging.info("No adapter_dir provided and no merged adapter found. Adding a new LoRA adapter.")
-            peft_config = LoraConfig(
-                task_type=TaskType.CAUSAL_LM,
-                r=8,  # Rank for LoRA matrices
-                lora_alpha=32,  # Alpha scaling
-                target_modules=["q_proj", "v_proj"],  # Apply LoRA to these layers
-                lora_dropout=0.05,
-                bias="none"
-            )
-            model = get_peft_model(model, peft_config)
+        logging.info("Model is already merged with the adapter configuration.")
+
 
     # If using 4-bit quantization, do not manually move the model to the device
     if not bnb_config.load_in_4bit:
-        model.to(device)
-
-    torch.cuda.empty_cache()
+        model.to(device)    
 
     return model, tokenizer
 
@@ -126,17 +116,13 @@ def load_datasets(train_file: str, eval_file: str) -> DatasetDict:
     Returns:
         DatasetDict: A dictionary containing the training and validation datasets.
     """
-    logging.info(f"Loading datasets: {train_file} and {eval_file}")
     
     # Load the datasets from JSON files
     train_dataset = load_dataset('json', data_files={'train': train_file})['train']
     validation_dataset = load_dataset('json', data_files={'validation': eval_file})['validation']
     
-    # Log the number of samples in each dataset
-    logging.info(f"Loaded {len(train_dataset)} training samples and {len(validation_dataset)} validation samples.")
-    
     # Return the datasets as a dictionary
-    return DatasetDict({'train': train_dataset, 'validation': validation_dataset})
+    return train_dataset, validation_dataset
 
 
 def setup_dpo_trainer(model, tokenizer, train_dataset, eval_dataset, output_dir, loss_type):
@@ -155,7 +141,6 @@ def setup_dpo_trainer(model, tokenizer, train_dataset, eval_dataset, output_dir,
     Returns:
         DPOTrainer: The set up DPO trainer.
     """
-    logging.info("Setting up the DPO trainer...")
 
     # Set up the training arguments
     training_args = DPOConfig(
@@ -202,13 +187,12 @@ def main():
 
     # Load model and tokenizer
     model, tokenizer = load_model_and_tokenizer(args.model_name, args.adapter_dir, device)
+    torch.cuda.empty_cache()
 
     # Load datasets
     train_json_path = "out/generation_apty_ranked_train.jsonl"
     eval_json_path = "out/generation_apty_ranked_test.jsonl"
-    datasets = load_datasets(train_json_path, eval_json_path)
-    train_dataset = datasets['train']
-    eval_dataset = datasets['validation']
+    train_dataset, eval_dataset = load_datasets(train_json_path, eval_json_path)
     torch.cuda.empty_cache()
 
     # Setup DPO trainer
@@ -216,10 +200,11 @@ def main():
 
     # Train the model
     logging.info("Starting DPO training...")
+    torch.cuda.empty_cache()
     trainer.train()
+    torch.cuda.empty_cache()
 
     # Save the trained model
-    logging.info("Training completed. Saving the model...")
     trainer.save_model(output_dir)
     logging.info(f"Model saved to {output_dir}")
 
