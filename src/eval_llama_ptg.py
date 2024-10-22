@@ -430,7 +430,6 @@ def main():
     tokenizer = load_tokenizer(args.model_name)
     
     # Pre-tokenize APTY data
-# Pre-tokenize APTY data
     tokenized_apty_data = {
         paraphrase_type: {
             **tokenize_data(tokenizer, [
@@ -451,8 +450,8 @@ def main():
     models = [
         (args.model_name, None, "base_model"),
         (args.model_name, args.etpc_dir, "etpc_model"),
-        #(args.model_name, args.dpo_dir, "dpo_model"),    # DPO adapter 
-        #(args.model_name, args.ipo_dir, "ipo_model"),    # IPO adapter  
+        (args.model_name, args.dpo_dir, "dpo_model"),    # DPO adapter 
+        (args.model_name, args.ipo_dir, "ipo_model"),    # IPO adapter  
     ]
 
     generate_and_evaluate(tokenizer, models, tokenized_apty_data, tokenized_etpc_data, 

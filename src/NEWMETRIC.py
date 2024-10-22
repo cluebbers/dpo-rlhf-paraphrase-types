@@ -40,6 +40,14 @@ class ParaphraseTypeEvaluator:
         predicted_types = [TOP_10_PARAPHRASE_TYPES[idx] for idx in top_k_indices if probs[idx] > 0.5]
         return predicted_types
 
+    def extract_first_paraphrase(self, paraphrase: str) -> str:
+        # Split the paraphrase text based on "1. " and "2. "
+        # Assume that each paraphrase starts with "1. " and ends just before "2. "
+        parts = paraphrase.split("2. ")
+        if parts:
+            return parts[0].strip()
+        return paraphrase.strip()
+
     def evaluate_and_update_json(self, json_file_path: str, output_file_path: str) -> Dict[Tuple[str, str], float]:
         with open(json_file_path, 'r', encoding='utf-8') as file:
             data = json.load(file)
@@ -52,7 +60,9 @@ class ParaphraseTypeEvaluator:
             dataset_name = entry.get("dataset", "Unknown")
             
             for paraphrase_entry in entry["List"]:
-                paraphrase = paraphrase_entry["paraphrase"]
+                # Extract the first paraphrase using the new function
+                original_paraphrase = paraphrase_entry["paraphrase"]
+                paraphrase = self.extract_first_paraphrase(original_paraphrase)
                 model_name = paraphrase_entry["model"]
                 true_labels = [1 if ptype in true_types else 0 for ptype in TOP_10_PARAPHRASE_TYPES]
                 predicted_types = self.predict_paraphrase_types(reference, paraphrase)
@@ -115,5 +125,3 @@ evaluator.update_csv_with_f1(
     avg_model_scores=avg_model_scores
     
 )
-
-#TODO apty and etpxc score column
