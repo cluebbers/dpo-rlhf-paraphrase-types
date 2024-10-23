@@ -5,12 +5,13 @@ import random
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
+import pandas as pd
 import torch.nn as nn
 import requests
 import xml.etree.ElementTree as ET
 import numpy as np
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
-from collections import Counter
+from collections import defaultdict
 from datasets import load_dataset, Dataset
 from transformers import (
     AutoConfig,
@@ -21,6 +22,7 @@ from transformers import (
     DataCollatorWithPadding,
     PreTrainedTokenizerBase,
 )
+from optuna.integration import TransformersTrainerPruningCallback
 
 TOP_10_PARAPHRASE_TYPES = [
     "addition/deletion", "change of order", "derivational changes", "inflectional changes",
@@ -150,7 +152,6 @@ def parse_arguments() -> argparse.Namespace:
     """Parse command line arguments for the experiment."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_name", type=str, default="out/cls-models/deberta-base_qqp_pd", help="Name of the model to use")
-    parser.add_argument("--max_samples_per_class", type=int, default=100, help="Maximum samples per class for downsampling")
     return parser.parse_args()
 
 def compute_metrics(predictions, labels):
@@ -174,6 +175,7 @@ def compute_metrics(predictions, labels):
     report = classification_report(
         labels, preds, target_names=target_names, output_dict=True
     )
+    macro_f1_from_report = report['macro avg']['f1-score']
 
     global detailed_classification_report
     detailed_classification_report = report
@@ -183,23 +185,12 @@ def compute_metrics(predictions, labels):
         'precision': precision,
         'recall': recall,
         'f1': f1,
+        "macro-f1": macro_f1_from_report,
     }
-
-
-
-from collections import defaultdict
-from datasets import Dataset
-from typing import Any, Dict, List, Tuple
-
-from collections import defaultdict
-from datasets import Dataset
-from typing import Any, Dict, List, Tuple
 
 def split_dataset_by_type(
     dataset: Dataset, 
-    train_percent: float = 0.8, 
-    min_samples: int = 100, 
-    max_samples: int = 400
+    train_percent: float = 0.8
 ) -> Tuple[Dataset, Dataset, Dict[str, int], Dict[str, int]]:
     """
     Split dataset by paraphrase type, ensuring a balanced distribution of paraphrase types 
@@ -231,16 +222,13 @@ def split_dataset_by_type(
             paraphrase_type_to_examples[ptype].append(example)
             type_counts[ptype] += 1
 
-    # Step 2: Adjust counts to balance data by paraphrase type
-    adjusted_counts = {ptype: min(max(count, min_samples), max_samples) for ptype, count in type_counts.items()}
-
     train_examples = []
     test_examples = defaultdict(list)
 
-    # Step 3: Balanced splitting into train and test sets
+    # Step 2: Balanced splitting into train and test sets
     for ptype, examples in paraphrase_type_to_examples.items():
-        # Use adjusted counts for downsampling
-        examples = random.sample(examples, adjusted_counts[ptype])
+        # Shuffle the examples for random distribution
+        random.shuffle(examples)
 
         # Split the examples into train/test sets for this paraphrase type
         split_idx = int(train_percent * len(examples))
@@ -250,15 +238,15 @@ def split_dataset_by_type(
         train_examples.extend(train_subset)
         test_examples[ptype].extend(test_subset)
 
-    # Step 4: Remove duplicates based on unique 'idx' field
+    # Step 3: Remove duplicates based on unique 'idx' field
     train_examples = list({ex['idx']: ex for ex in train_examples}.values())
     test_examples_flat = list({ex['idx']: ex for ex in [ex for sublist in test_examples.values() for ex in sublist]}.values())
 
-    # Step 5: Create train and test datasets
+    # Step 4: Create train and test datasets
     train_dataset = Dataset.from_list(train_examples)
     test_dataset = Dataset.from_list(test_examples_flat)
 
-    # Step 6: Use the existing count_paraphrase_types function to count occurrences
+    # Step 5: Use the existing count_paraphrase_types function to count occurrences
     train_type_counts = count_paraphrase_types(train_dataset)
     test_type_counts = count_paraphrase_types(test_dataset)
 
@@ -268,6 +256,7 @@ def split_dataset_by_type(
 
     # Return datasets and counts
     return train_dataset, test_dataset, train_type_counts, test_type_counts
+
 
 
 
@@ -298,8 +287,8 @@ def count_paraphrase_types(dataset: Dataset) -> Dict[str, int]:
 
 def hyperparameter_space(trial):
     return {
-        "learning_rate": trial.suggest_float("learning_rate", 1e-5, 5e-5, log=True),
-        "weight_decay": trial.suggest_categorical("weight_decay", [0.0, 0.01, 0.1]),
+        "learning_rate": trial.suggest_float("learning_rate", 1e-5, 1e-1, log=True),
+        "weight_decay": trial.suggest_float("weight_decay", 1e-6,1e-2, log=True),
         "per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [16, 32]),
     }
 
@@ -325,7 +314,7 @@ def main():
         if trial is not None:
             # Extract class weights from the trial
             class_weights = torch.tensor([
-                trial.suggest_float(f"class_weight_{i}", 0.1, 10.0, log=True) for i in range(len(TOP_10_PARAPHRASE_TYPE_TO_ID))
+                trial.suggest_float(f"class_weight_{i}", 0.01, 20.0, log=True) for i in range(len(TOP_10_PARAPHRASE_TYPE_TO_ID))
             ], dtype=torch.float32)
         else:
             class_weights = torch.tensor([
@@ -376,10 +365,11 @@ def main():
             save_strategy="epoch",
             save_total_limit=1,
             fp16=True,
-            num_train_epochs=3,
-            metric_for_best_model='f1',
+            num_train_epochs=50,
+            metric_for_best_model='macro-f1',
             load_best_model_at_end=True,
             greater_is_better=True,
+            early_stopping_patience=5,
         ),
         train_dataset=train_dataset,
         eval_dataset=test_dataset,
@@ -392,9 +382,16 @@ def main():
     best_run = trainer.hyperparameter_search(
         direction="maximize",
         hp_space=hyperparameter_space,
-        n_trials=10,
-        backend="optuna"
+        n_trials=300, #300
+        backend="optuna",
+        callbacks=[TransformersTrainerPruningCallback]
     )
+    
+    best_hyperparameters = best_run.hyperparameters
+    best_params_df = pd.DataFrame([best_hyperparameters])
+
+    # Export to CSV
+    best_params_df.to_csv(f"out/cls-models/{args.model_name.split('/')[-1]}_hyperparameters_ptd.csv", index=False)
 
     # Apply the best hyperparameters found by the search
     trainer.args.learning_rate = best_run.hyperparameters['learning_rate']
