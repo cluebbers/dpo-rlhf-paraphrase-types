@@ -23,7 +23,6 @@ from transformers import (
     DataCollatorWithPadding,
     PreTrainedTokenizerBase,
 )
-from optuna.integration import TransformersTrainerPruningCallback
 
 TOP_10_PARAPHRASE_TYPES = [
     "addition/deletion", "change of order", "derivational changes", "inflectional changes",
@@ -364,7 +363,7 @@ def main():
         hp_space=hyperparameter_space,
         n_trials=300, #300
         backend="optuna",
-        callbacks=[TransformersTrainerPruningCallback, save_best_params_callback]
+        callbacks=[save_best_params_callback]
     )
     
     best_hyperparameters = best_run.hyperparameters
