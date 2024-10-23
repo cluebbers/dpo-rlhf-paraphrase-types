@@ -3,6 +3,7 @@ import os
 import csv
 import random
 from typing import Any, Dict, List, Optional, Tuple, Union
+from datetime import datetime
 
 import torch
 import pandas as pd
@@ -83,31 +84,6 @@ def write_results_to_csv(results, output_file="evaluation_results.csv"):
                 writer.writerow([label, metrics])
 
     print(f"Results written to {output_file}")
-
-
-
-def fetch_paraphrase_types():
-    """Fetches paraphrase types from an external XML source."""
-    url = "https://raw.githubusercontent.com/venelink/ETPC/master/Corpus/paraphrase_types.xml"
-    response = requests.get(url)
-    root = ET.fromstring(response.text)
-    return ([child.find("type_name").text.strip().lower() for child in root],
-            [int(child.find("type_id").text) for child in root],
-            [child.find("type_category").text for child in root])
-
-def create_label_maps():
-    """Creates label maps for ETPC paraphrase types."""
-    paraphrase_types, paraphrase_type_ids, _ = fetch_paraphrase_types()
-    paraphrase_types = [ptype for ptype in paraphrase_types if ptype in TOP_10_PARAPHRASE_TYPES]
-    
-    label2cls_id = {label: idx for idx, label in enumerate(paraphrase_types)}
-    cls_id2label = {idx: label for label, idx in label2cls_id.items()}
-    paraphrase_type2cls_id = {ptype: idx for ptype, idx in zip(paraphrase_types, paraphrase_type_ids)}
-    
-    cls_id2paraphrase_type_id = {i: paraphrase_type2cls_id[cls_id2label[i]] for i in cls_id2label}
-    paraphrase_type_id2cls_id = {v: k for k, v in cls_id2paraphrase_type_id.items()}
-    
-    return label2cls_id, cls_id2label, paraphrase_type2cls_id, cls_id2paraphrase_type_id, paraphrase_type_id2cls_id
 
 def tokenize_examples(examples: Dict[str, List[str]], sentence1_key: str, tokenizer: PreTrainedTokenizerBase, sentence2_key: Optional[str] = None):
     """Tokenizes input sentences and generates corresponding labels."""
@@ -255,11 +231,7 @@ def split_dataset_by_type(
     print(f"Test counts: {test_type_counts}")
 
     # Return datasets and counts
-    return train_dataset, test_dataset, train_type_counts, test_type_counts
-
-
-
-
+    return train_dataset, test_dataset
 
 def count_paraphrase_types(dataset: Dataset) -> Dict[str, int]:
     """
@@ -292,21 +264,29 @@ def hyperparameter_space(trial):
         "per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [16, 32]),
     }
 
+def save_best_params_callback(study, trial):
+    # Retrieve the best parameters so far
+    best_params = study.best_params
+
+    # Convert the best parameters to a DataFrame
+    best_params_df = pd.DataFrame([best_params])
+
+    # Save the best parameters to a CSV file
+    best_params_df.to_csv("best_hyperparameters_intermediate.csv", index=False)
+    print(f"Saved best parameters so far: {best_params}")
+    
 def main():
     args = parse_arguments()
 
     dataset = load_dataset("jpwahle/etpc").filter(lambda x: x["etpc_label"] == 1)["train"]
     tokenizer = AutoTokenizer.from_pretrained(args.model_name, clean_up_tokenization_spaces=True)
 
-    label_maps = create_label_maps()
-    _, cls_id2label, paraphrase_type2cls_id, _, _ = label_maps
-
     dataset_tokenized = dataset.map(
         tokenize_examples, batched=True, fn_kwargs={"sentence1_key": "sentence1", "sentence2_key": "sentence2", "tokenizer": tokenizer}
     )
     
     # Split the dataset into training and testing sets with type counts
-    train_dataset, test_dataset, train_type_counts, test_type_counts = split_dataset_by_type(dataset_tokenized, train_percent=0.8, min_samples=100, max_samples=400)
+    train_dataset, test_dataset = split_dataset_by_type(dataset_tokenized, train_percent=0.8)
     
     
     def model_init(trial=None):
@@ -384,14 +364,15 @@ def main():
         hp_space=hyperparameter_space,
         n_trials=300, #300
         backend="optuna",
-        callbacks=[TransformersTrainerPruningCallback]
+        callbacks=[TransformersTrainerPruningCallback, save_best_params_callback]
     )
     
     best_hyperparameters = best_run.hyperparameters
     best_params_df = pd.DataFrame([best_hyperparameters])
 
     # Export to CSV
-    best_params_df.to_csv(f"out/cls-models/{args.model_name.split('/')[-1]}_hyperparameters_ptd.csv", index=False)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    best_params_df.to_csv(f"out/cls-models/{args.model_name.split('/')[-1]}_hyperparameters_ptd_{timestamp}.csv", index=False)
 
     # Apply the best hyperparameters found by the search
     trainer.args.learning_rate = best_run.hyperparameters['learning_rate']
@@ -406,8 +387,8 @@ def main():
     trainer.train()
 
     # Evaluate and write results to CSV
-    results = trainer.evaluate()
-    write_results_to_csv(results, output_file=f"out/cls-models/{args.model_name.split('/')[-1]}_ptd_results_hyperclass.csv")
+    results = trainer.evaluate()    
+    write_results_to_csv(results, output_file=f"out/cls-models/{args.model_name.split('/')[-1]}_ptd_results_hyperclass_{timestamp}.csv")
 
 if __name__ == "__main__":
     main()
