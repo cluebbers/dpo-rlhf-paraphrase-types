@@ -353,7 +353,7 @@ def main():
         model_init=lambda trial: model_init(trial),  # Pass the trial object to model_init
         args=TrainingArguments(
             output_dir=f"./out/cls-models/{args.model_name.split('/')[-1]}_etpc_ptd", 
-            per_device_train_batch_size=16,
+            #per_device_train_batch_size=16,
             #learning_rate=4.0975283438994273e-05,
             #weight_decay=0.0,
             eval_strategy="epoch",
@@ -375,29 +375,28 @@ def main():
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # # Perform the hyperparameter search using Optuna
-    # best_run = trainer.hyperparameter_search(
-    #     direction="maximize",
-    #     hp_space=hyperparameter_space,
-    #     n_trials=300,  # Number of trials for hyperparameter search
-    #     backend="optuna"
-    # )
+    # Perform the hyperparameter search using Optuna
+    best_run = trainer.hyperparameter_search(
+        direction="maximize",
+        hp_space=hyperparameter_space,
+        n_trials=300,  # Number of trials for hyperparameter search
+        backend="optuna"
+    )
     
-    # # Save the best parameters after the search using a DataFrame
-    # best_hyperparameters = best_run.hyperparameters
-    # best_params_df = pd.DataFrame([best_hyperparameters])
-    # best_params_df.to_csv(f"out/cls-models/{args.model_name.split('/')[-1]}_hyperparameters_ptd_{timestamp}.csv", index=False)
+    # Save the best parameters after the search using a DataFrame
+    best_hyperparameters = best_run.hyperparameters
+    best_params_df = pd.DataFrame([best_hyperparameters])
+    best_params_df.to_csv(f"out/cls-models/{args.model_name.split('/')[-1]}_hyperparameters_ptd_{timestamp}.csv", index=False)
    
-    # # Apply the best hyperparameters found by the search
-    # trainer.args.learning_rate = best_hyperparameters['learning_rate']
-    # trainer.args.weight_decay = best_hyperparameters['weight_decay']
-    # trainer.args.per_device_train_batch_size = best_hyperparameters['per_device_train_batch_size']
+    # Apply the best hyperparameters found by the search
+    trainer.args.learning_rate = best_hyperparameters['learning_rate']
+    trainer.args.weight_decay = best_hyperparameters['weight_decay']
+    trainer.args.per_device_train_batch_size = best_hyperparameters['per_device_train_batch_size']
 
-    # # Extract the best class weights for further use or logging
-    # best_class_weights = [best_hyperparameters[f'class_weight_{i}'] for i in range(len(TOP_10_PARAPHRASE_TYPE_TO_ID))]
-    # print(f"Best class weights: {best_class_weights}")
+    # Extract the best class weights for further use or logging
+    best_class_weights = [best_hyperparameters[f'class_weight_{i}'] for i in range(len(TOP_10_PARAPHRASE_TYPE_TO_ID))]
+    print(f"Best class weights: {best_class_weights}")
       
-    # Print a few examples from the train and test datasets to verify labels
     trainer.train()
 
     # Evaluate and write results to CSV
