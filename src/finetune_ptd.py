@@ -22,6 +22,7 @@ from transformers import (
     TrainingArguments,
     DataCollatorWithPadding,
     PreTrainedTokenizerBase,
+    EarlyStoppingCallback,
 )
 
 TOP_10_PARAPHRASE_TYPES = [
@@ -348,13 +349,13 @@ def main():
             metric_for_best_model='macro-f1',
             load_best_model_at_end=True,
             greater_is_better=True,
-            early_stopping_patience=5,
         ),
         train_dataset=train_dataset,
         eval_dataset=test_dataset,
         tokenizer=tokenizer,
         data_collator=DataCollatorWithPadding(tokenizer=tokenizer, padding="longest"),
-        compute_metrics=lambda p: compute_metrics(p.predictions, p.label_ids)
+        compute_metrics=lambda p: compute_metrics(p.predictions, p.label_ids),
+        callbacks=[EarlyStoppingCallback(early_stopping_patience=5)],
     )
 
     # Perform the hyperparameter search using Optuna
