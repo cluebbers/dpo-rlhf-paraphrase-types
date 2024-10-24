@@ -3,14 +3,17 @@ import evaluate
 import torch  
 import numpy as np
 import pandas as pd
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
     Trainer,
     TrainingArguments,
     DataCollatorWithPadding,
+    PreTrainedTokenizerBase,
+    PreTrainedModel,
 )
+from typing import Dict, List, Tuple, Optional
 
 # Global dictionary for all metrics
 metrics = {
@@ -20,42 +23,69 @@ metrics = {
     "f1": evaluate.load("f1")
 }
 
-def tokenize_examples(examples, tokenizer):
+def tokenize_examples(
+    examples: Dict[str, List[str]], 
+    tokenizer: PreTrainedTokenizerBase
+) -> Dict[str, List[int]]:
     """
     Tokenizes input examples using the provided tokenizer.
 
     Args:
-        examples (dict): A dictionary with keys 'question1', 'question2', and 'label'.
-        tokenizer (Tokenizer): The tokenizer used for encoding the questions.
+        examples (Dict[str, List[str]]): A dictionary with keys 'question1', 'question2', and 'label'.
+            Each value is a list of strings.
+        tokenizer (PreTrainedTokenizerBase): The tokenizer used for encoding the questions.
 
     Returns:
-        dict: Tokenized examples with the corresponding labels.
+        Dict[str, List[int]]: Tokenized examples with the corresponding labels.
+            The dictionary has the same keys as the input examples, but the values are lists of token IDs.
     """
-    return {
-        **tokenizer(examples["question1"], examples["question2"], truncation=True, max_length=256),
-        "labels": examples["label"]
-    }
+    tokenized_examples = {}
+    for key, value in examples.items():
+        if key == "label":
+            tokenized_examples[key] = value
+        else:
+            tokenized_examples[key] = tokenizer(
+                value, 
+                truncation=True, 
+                max_length=256, 
+                padding="max_length"
+            )["input_ids"]
+    
+    return tokenized_examples
 
 def parse_args() -> argparse.Namespace:
     """
     Parses command-line arguments.
 
     Returns:
-        argparse.Namespace: Parsed arguments.
+        argparse.Namespace: The parsed command-line arguments.
     """
     parser = argparse.ArgumentParser(description="Train a paraphrase detection model.")
-    parser.add_argument("--model_name", type=str, default="microsoft/deberta-base", help="Model name from Hugging Face hub.")
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default="microsoft/deberta-base",
+        help="Model name from Hugging Face hub."
+    )
     return parser.parse_args()
 
-def compute_binary_metrics(eval_pred):
+def compute_binary_metrics(eval_pred: Tuple[np.ndarray, np.ndarray]) -> Dict[str, float]:
     """
     Computes accuracy, precision, recall, and F1 score for binary classification.
-
-    Args:
-        eval_pred (tuple): Model predictions and corresponding labels.
-
-    Returns:
-        dict: Computed accuracy, precision, recall, and F1 score.
+    
+    Parameters
+    ----------
+    eval_pred : Tuple[np.ndarray, np.ndarray]
+        Model predictions and corresponding labels.
+        The first element is a 2D array of shape (batch_size, num_classes) containing the
+        model predictions. The second element is a 1D array of shape (batch_size,) containing
+        the corresponding labels.
+    
+    Returns
+    -------
+    Dict[str, float]
+        Computed accuracy, precision, recall, and F1 score.
+        A dictionary containing the accuracy, precision, recall, and F1 score as floats.
     """
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
@@ -63,58 +93,86 @@ def compute_binary_metrics(eval_pred):
     # Ensure labels are either 0 or 1, not -1 or 0
     labels = np.where(labels == -1, 0, labels)
 
+    # Compute accuracy, precision, recall, and F1 score for binary classification
+    accuracy = metrics["accuracy"].compute(predictions=predictions, references=labels)["accuracy"]
+    precision = metrics["precision"].compute(predictions=predictions, references=labels, average="binary", pos_label=1)["precision"]
+    recall = metrics["recall"].compute(predictions=predictions, references=labels, average="binary", pos_label=1)["recall"]
+    f1 = metrics["f1"].compute(predictions=predictions, references=labels, average="binary", pos_label=1)["f1"]
+
     return {
-        "accuracy": metrics["accuracy"].compute(predictions=predictions, references=labels)["accuracy"],
-        "precision": metrics["precision"].compute(predictions=predictions, references=labels, average="binary", pos_label=1)["precision"],
-        "recall": metrics["recall"].compute(predictions=predictions, references=labels, average="binary", pos_label=1)["recall"],
-        "f1": metrics["f1"].compute(predictions=predictions, references=labels, average="binary", pos_label=1)["f1"],
+        "accuracy": accuracy,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
     }
 
 
 
-def load_and_tokenize_dataset(tokenizer, subset_size=None):
+def load_and_tokenize_dataset(
+    tokenizer: PreTrainedTokenizerBase,
+    subset_size: Optional[int] = None
+) -> Dict[str, Dataset]:
     """
-    Loads and tokenizes the QQP dataset.
+    Load and tokenize the QQP dataset using the provided tokenizer.
 
     Args:
-        tokenizer (Tokenizer): The tokenizer used to encode questions.
-        subset_size (int, optional): If set, selects a smaller subset of the dataset.
+        tokenizer: PreTrainedTokenizerBase
+            The tokenizer used to encode questions.
+        subset_size: Optional[int]
+            If set, selects a smaller subset of the dataset.
 
     Returns:
-        dict: Tokenized train, validation, and test datasets.
+        Dict[str, Dataset]
+            Tokenized train and validation datasets.
     """
     dataset = load_dataset("glue", "qqp")
     
     if subset_size:
+        # Select a smaller subset of the dataset and shuffle it
         dataset = {split: dataset[split].shuffle(seed=42).select(range(subset_size)) for split in ["train", "validation"]}
     
-    return {
-        split: dataset[split].map(tokenize_examples, batched=True, fn_kwargs={"tokenizer": tokenizer})
-        for split in ["train", "validation"]
-    }
+    tokenized_dataset: Dict[str, Dataset] = {}
+    for split in ["train", "validation"]:
+        # Tokenize the dataset using the provided tokenizer
+        tokenized_dataset[split] = dataset[split].map(
+            tokenize_examples, 
+            batched=True, 
+            fn_kwargs={"tokenizer": tokenizer}
+        )
+    
+    return tokenized_dataset
 
-def main():
+def main() -> None:
     """
     Main function to train and evaluate the paraphrase detection model.
+
+    The model is trained on the QQP dataset and the best model is saved in the scratch filesystem.
+    The evaluation results are saved in a CSV file in the current directory.
+
+    Parameters:
+        None
+
+    Returns:
+        None
     """
     args = parse_args()
 
     # Automatically set device to 'cuda' if available, else 'cpu'
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device: str = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Load tokenizer and model
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name)
-    model = AutoModelForSequenceClassification.from_pretrained(
+    tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(args.model_name)
+    model: PreTrainedModel = AutoModelForSequenceClassification.from_pretrained(
         args.model_name, num_labels=2, id2label={0: "no_paraphrase", 1: "paraphrase"}, label2id={"no_paraphrase": 0, "paraphrase": 1}
     ).to(device)
 
     # Load and tokenize dataset
-    tokenized_datasets = load_and_tokenize_dataset(tokenizer)
+    tokenized_datasets: Dict[str, Dataset] = load_and_tokenize_dataset(tokenizer)
 
     # Path to save models in the scratch filesystem
-    output_dir = f"/scratch1/users/u12246/out/cls-models/{args.model_name.split('/')[-1]}_qqp_pd"  
+    output_dir: str = f"/scratch1/users/u12246/out/cls-models/{args.model_name.split('/')[-1]}_qqp_pd"  
 
-    trainer = Trainer(
+    trainer: Trainer = Trainer(
         model=model,
         args=TrainingArguments(
             output_dir=output_dir,
@@ -142,10 +200,10 @@ def main():
     trainer.train()
     print(f"Best model is saved at: {trainer.args.output_dir}")
     
-    results = trainer.evaluate(eval_dataset=tokenized_datasets["validation"])
+    results: Dict[str, float] = trainer.evaluate(eval_dataset=tokenized_datasets["validation"])
 
     # Save and print the location of the test set evaluation results
-    results_file = f"./out/cls-models/{args.model_name.split('/')[-1]}_qqp_pd_results.csv"
+    results_file: str = f"./out/cls-models/{args.model_name.split('/')[-1]}_qqp_pd_results.csv"
     pd.DataFrame([results]).to_csv(results_file, index=False)
     print(f"Test set evaluation results are saved at: {results_file}")
 
