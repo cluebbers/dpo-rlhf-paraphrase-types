@@ -2,7 +2,7 @@ import argparse
 import os
 import json
 import logging
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Tuple, Optional
 import torch
 
 from tqdm import tqdm
@@ -26,12 +26,14 @@ def parse_arguments() -> argparse.Namespace:
     """
     Parse command-line arguments for generating paraphrases and evaluating models.
 
-    The following arguments can be specified:
+    Args:
+        --model_name (str): Path to the base model. Defaults to "meta-llama/Llama-3.1-8B".
+        --etpc_dir (str): Directory containing the ETPC adapter. Defaults to "out/gen-models/llama-3.1-8b-etpc".
+        --dpo_dir (str): Directory containing the DPO adapter. Defaults to "out/gen-models/dpo_out-gen-models-llama-3.1-8b-etpc_sigmoid".
+        --ipo_dir (str): Directory containing the DPO adapter. Defaults to "out/gen-models/dpo_out-gen-models-llama-3.1-8b-etpc_ipo".
 
-    --model_name (str): Path to the base model. Defaults to "meta-llama/Llama-3.1-8B".
-    --etpc_dir (str): Directory containing the ETPC adapter. Defaults to "out/gen-models/llama-3.1-8b-etpc".
-    --dpo_dir (str): Directory containing the DPO adapter. Defaults to "out/gen-models/dpo_out-gen-models-llama-3.1-8b-etpc_sigmoid".
-    --ipo_dir (str): Directory containing the DPO adapter. Defaults to "out/gen-models/dpo_out-gen-models-llama-3.1-8b-etpc_ipo".
+    Returns:
+        argparse.Namespace: The parsed command line arguments.
     """
     parser = argparse.ArgumentParser(description="Generate paraphrases and evaluate models.")
     parser.add_argument("--model_name", type=str, default="meta-llama/Llama-3.1-8B", help="Base model path.")
@@ -39,7 +41,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--dpo_dir", type=str, default="out/gen-models/dpo_out-gen-models-llama-3.1-8b-etpc_sigmoid", help="DPO adapter directory.")
     parser.add_argument("--ipo_dir", type=str, default="out/gen-models/dpo_out-gen-models-llama-3.1-8b-etpc_ipo", help="DPO adapter directory.")
     
-    args = parser.parse_args()
+    args: argparse.Namespace = parser.parse_args()
 
     # Convert the string "None" to actual None
     if args.etpc_dir == "None":
@@ -51,19 +53,19 @@ def parse_arguments() -> argparse.Namespace:
 
     return args
 
-def create_etpc_prompts(data):
+def create_etpc_prompts(data: List[Dict[str, Any]]) -> Tuple[List[str], List[str]]:
     """
     Converts the ETPC data into prompts and references
     for paraphrase generation.
 
     Args:
-        data (list): The ETPC dataset.
+        data (List[Dict[str, Any]]): The ETPC dataset.
 
     Returns:
-        tuple: A tuple containing the prompts and references.
+        Tuple[List[str], List[str]]: A tuple containing the prompts and references.
     """
-    prompts = []
-    references = []
+    prompts: List[str] = []
+    references: List[str] = []
     for instance in data:
         # Skip instances without any paraphrase types
         if not instance["paraphrase_types"]:
@@ -82,7 +84,10 @@ def create_etpc_prompts(data):
 
     return prompts, references
 
-def read_sentences_by_type(data_dir: str, num_examples: int) -> dict[str, dict[str, list[str]]]:
+def read_sentences_by_type(
+    data_dir: str, 
+    num_examples: int
+) -> Dict[str, Dict[str, List[str]]]:
     """
     Reads all .txt files in the given directory and creates a dictionary where the keys are the paraphrase type names 
     (from the first line of each file) and the values are dictionaries containing the paraphrase type name and a list of 
@@ -93,10 +98,10 @@ def read_sentences_by_type(data_dir: str, num_examples: int) -> dict[str, dict[s
         num_examples (int): The maximum number of sentences to read per paraphrase type.
 
     Returns:
-        dict[str, dict[str, list[str]]]: A dictionary where the keys are the paraphrase type names
+        Dict[str, Dict[str, List[str]]]: A dictionary where the keys are the paraphrase type names
             and the values are dictionaries containing the paraphrase type name and a list of sentences.
     """
-    sentences_by_type = {}
+    sentences_by_type: Dict[str, Dict[str, List[str]]] = {}
 
     for file_name in os.listdir(data_dir):
         file_path = os.path.join(data_dir, file_name)
@@ -130,23 +135,17 @@ def load_tokenizer(model_name: str) -> PreTrainedTokenizerBase:
     """
     Load a tokenizer from the Hugging Face model hub.
 
-    This function loads a tokenizer from the Hugging Face model hub using the
-    `AutoTokenizer.from_pretrained` method. The tokenizer is configured to pad
-    on the left (i.e., the beginning of the sequence) and to use the fast
-    tokenizer implementation.
-
-    If the tokenizer does not have a pad token, a pad token is added to the
-    tokenizer's vocabulary.
-
     Args:
         model_name (str): The name of the model to load the tokenizer from.
 
     Returns:
-        tuple[PreTrainedTokenizerBase]: The loaded tokenizer.
+        PreTrainedTokenizerBase: The loaded tokenizer, configured to pad on the
+        left and use the fast tokenizer implementation. A pad token is added if
+        it does not exist in the tokenizer's vocabulary.
     """
 
     # Load the tokenizer with specific settings
-    tokenizer = AutoTokenizer.from_pretrained(
+    tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
         model_name, 
         padding_side="left",  # Set padding side to left
         use_fast=True  # Use fast tokenizer implementation
@@ -172,9 +171,8 @@ def tokenize_data(
     Returns:
         Dict[str, torch.Tensor]: A dictionary containing the tokenized input IDs and attention mask.
     """
-
     # Tokenize the prompts
-    tokenized_inputs = tokenizer(
+    tokenized_inputs: Dict[str, torch.Tensor] = tokenizer(
         prompts,
         return_tensors="pt",  # Return PyTorch tensors
         padding=True,  # Pad the inputs to the longest sequence
@@ -197,8 +195,8 @@ def generate_paraphrases(
     Generate paraphrases using the provided model and tokenizer.
 
     Args:
-        model (PreTrainedModel): The pre-trained language model for generation.
-        tokenizer (PreTrainedTokenizerBase): Tokenizer used for encoding and decoding text.
+        model (transformers.PreTrainedModel): The pre-trained language model for generation.
+        tokenizer (transformers.PreTrainedTokenizerBase): Tokenizer used for encoding and decoding text.
         inputs (Dict[str, torch.Tensor]): Tokenized inputs containing input IDs and attention masks.
         input_token_length (int): Length of the input tokens to separate them from generated tokens.
         temperature (float, optional): Controls the randomness of predictions by scaling the logits.
@@ -255,23 +253,29 @@ def save_metrics_to_csv(metrics: List[Dict[str, float]], output_csv: str) -> Non
     Args:
         metrics (List[Dict[str, float]]): List of dictionaries containing evaluation metrics.
         output_csv (str): Path to the output CSV file.
+
+    Returns:
+        None
     """
     # Define the column names for the CSV file
     fieldnames = ["Model", "Adapter", "ROUGE-1", "ROUGE-2", "ROUGE-L", "BLEU"]
 
-    # Write the metrics to a CSV file using Pandas
+    # Convert the metrics list into a Pandas DataFrame with the specified columns
     pd.DataFrame(metrics, columns=fieldnames).to_csv(output_csv, index=False)
 
     # Log the completion of writing the metrics to the CSV file
     logging.info(f"Evaluation metrics saved to {output_csv}")
 
-def save_paraphrases_to_json(paraphrases_list, output_file_path):
+def save_paraphrases_to_json(paraphrases_list: List[Dict[str, str]], output_file_path: str) -> None:
     """
     Save the generated paraphrases to a JSON file in a human-readable format.
 
     Args:
-        paraphrases_list (list): List of dictionaries containing the generated paraphrases.
+        paraphrases_list (List[Dict[str, str]]): List of dictionaries containing the generated paraphrases.
         output_file_path (str): Path to the output JSON file.
+
+    Returns:
+        None
     """
     # Open the output file in write mode, using UTF-8 encoding
     with open(output_file_path, 'w', encoding='utf-8') as output_file:
@@ -280,7 +284,10 @@ def save_paraphrases_to_json(paraphrases_list, output_file_path):
         # The indent=4 argument formats the JSON output with indentation
         json.dump(paraphrases_list, output_file, ensure_ascii=False, indent=4)
 
-def evaluate_individual_paraphrases(paraphrases: List[str], references: List[str]) -> List[Dict[str, float]]:
+def evaluate_individual_paraphrases(
+    paraphrases: List[str], 
+    references: List[str]
+) -> List[Dict[str, float]]:
     """
     Evaluate paraphrases using ROUGE and BLEU scores, returning individual scores per sentence pair.
 
@@ -289,7 +296,12 @@ def evaluate_individual_paraphrases(paraphrases: List[str], references: List[str
         references (List[str]): The reference texts.
 
     Returns:
-        List[Dict[str, float]]: A list containing the evaluation scores for each paraphrase-reference pair.
+        List[Dict[str, float]]: A list of dictionaries containing the evaluation scores for each paraphrase-reference pair.
+            Each dictionary will contain the following keys:
+                - "rouge-1": ROUGE-1 F-score
+                - "rouge-2": ROUGE-2 F-score
+                - "rouge-l": ROUGE-L F-score
+                - "bleu": BLEU score
     """
     # Use the ROUGE library to calculate the ROUGE scores
     rouge = Rouge()
@@ -349,12 +361,12 @@ def process_model_generation(
             their corresponding original sentences, and evaluation metrics.
     """
     
-    grouped_paraphrases = {}
+    grouped_paraphrases: Dict[str, Dict[str, Any]] = {}
 
     # Generate paraphrases for APTY dataset
     for paraphrase_type, tokenized_inputs in tokenized_apty_data.items():
-        input_token_len = tokenized_inputs["input_ids"].shape[-1]
-        paraphrases = generate_paraphrases(
+        input_token_len: int = tokenized_inputs["input_ids"].shape[-1]
+        paraphrases: List[str] = generate_paraphrases(
             model,
             tokenizer,
             tokenized_inputs,
@@ -363,7 +375,7 @@ def process_model_generation(
         )
         # Use a combined key of original_sentence and paraphrase_type for APTY
         for original_sentence, paraphrase in zip(tokenized_inputs["original_sentences"], paraphrases):
-            key = f"{original_sentence}_{paraphrase_type}"  # Combine original sentence and type
+            key: str = f"{original_sentence}_{paraphrase_type}"  # Combine original sentence and type
             if key not in grouped_paraphrases:
                 grouped_paraphrases[key] = {
                     "id": hash(key) % 1000,
@@ -379,8 +391,8 @@ def process_model_generation(
             })
 
     # Generate paraphrases for ETPC dataset
-    input_token_len = tokenized_etpc_data["input_ids"].shape[-1]
-    etpc_paraphrases = generate_paraphrases(
+    input_token_len: int = tokenized_etpc_data["input_ids"].shape[-1]
+    etpc_paraphrases: List[str] = generate_paraphrases(
         model,
         tokenizer,
         tokenized_etpc_data,
@@ -392,22 +404,22 @@ def process_model_generation(
     ):
         
         # Extract the part between "Sentence: " and " Paraphrase Types:"
-        start = original_sentence.find("Sentence: ") + len("Sentence: ")
-        end = original_sentence.find(" Paraphrase Types:")
+        start: int = original_sentence.find("Sentence: ") + len("Sentence: ")
+        end: int = original_sentence.find(" Paraphrase Types:")
         if start != -1 and end != -1:
-            cleaned_sentence = original_sentence[start:end].strip()
+            cleaned_sentence: str = original_sentence[start:end].strip()
         else:
-            cleaned_sentence = original_sentence
+            cleaned_sentence: str = original_sentence
             
         # Extract the part between "Paraphrase Types:" and " Generated Paraphrase:"
-        apt_start = original_sentence.find("Paraphrase Types:") + len("Paraphrase Types:")
-        apt_end = original_sentence.find(" Generated Paraphrase:")
+        apt_start: int = original_sentence.find("Paraphrase Types:") + len("Paraphrase Types:")
+        apt_end: int = original_sentence.find(" Generated Paraphrase:")
         if apt_start != -1 and apt_end != -1:
-            apt = original_sentence[apt_start:apt_end].strip()
+            apt: str = original_sentence[apt_start:apt_end].strip()
         else:
-            apt = ""
+            apt: str = ""
         
-        evaluation = evaluate_individual_paraphrases([paraphrase], [reference])[0]
+        evaluation: Dict[str, float] = evaluate_individual_paraphrases([paraphrase], [reference])[0]
         if cleaned_sentence not in grouped_paraphrases:
             grouped_paraphrases[cleaned_sentence] = {
                 "id": hash(cleaned_sentence) % 1000,
@@ -427,23 +439,23 @@ def process_model_generation(
 
 def generate_and_evaluate(
     tokenizer: PreTrainedTokenizerBase,
-    models, 
-    tokenized_apty_data, 
-    tokenized_etpc_data, 
-    etpc_references, 
-    output_csv, 
-    output_json, 
-    batch_size
-):
+    models: List[Tuple[str, str, str]], 
+    tokenized_apty_data: Dict[str, List[Dict[str, Any]]], 
+    tokenized_etpc_data: Dict[str, List[Dict[str, Any]]], 
+    etpc_references: List[str], 
+    output_csv: str, 
+    output_json: str, 
+    batch_size: int
+) -> None:
     """
     Generate paraphrases for each model and adapter, evaluate them, and save the results to a CSV file.
 
     Args:
         tokenizer (PreTrainedTokenizerBase): The tokenizer to use.
-        models (list): List of tuples containing model name, adapter directory, and model type.
-        tokenized_apty_data (dict): Tokenized APTY data.
-        tokenized_etpc_data (dict): Tokenized ETPC data.
-        etpc_references (list): List of references for ETPC.
+        models (List[Tuple[str, str, str]]): List of tuples containing model name, adapter directory, and model type.
+        tokenized_apty_data (Dict[str, List[Dict[str, Any]]]): Tokenized APTY data.
+        tokenized_etpc_data (Dict[str, List[Dict[str, Any]]]): Tokenized ETPC data.
+        etpc_references (List[str]): List of references for ETPC.
         output_csv (str): Output CSV file path.
         output_json (str): Output JSON file path.
         batch_size (int): Batch size to use for evaluation.
@@ -451,8 +463,8 @@ def generate_and_evaluate(
     Returns:
         None
     """
-    metrics = []
-    all_paraphrases = {}
+    metrics: List[Dict[str, float]] = []
+    all_paraphrases: Dict[str, Dict[str, Any]] = {}
     
     # Configure the BitsAndBytes config for loading models in 4-bit precision
     bnb_config = BitsAndBytesConfig(
@@ -506,7 +518,7 @@ def generate_and_evaluate(
         model.eval()
 
         # Generate paraphrases including evaluation metrics
-        paraphrases = process_model_generation(
+        paraphrases: Dict[str, Dict[str, Any]] = process_model_generation(
             model, tokenizer, tokenized_apty_data, tokenized_etpc_data, 
             etpc_references, model_suffix, batch_size
         )
@@ -519,7 +531,7 @@ def generate_and_evaluate(
                 all_paraphrases[original_sentence]["List"].extend(details["List"])
 
         # Collect evaluation metrics for this model
-        scores = [
+        scores: List[Dict[str, float]] = [
             entry["evaluation"] for details in paraphrases.values()
             for entry in details["List"] if "evaluation" in entry
         ]
@@ -562,18 +574,25 @@ def generate_and_evaluate(
     # Save the evaluation metrics to a CSV file
     save_metrics_to_csv(metrics, output_csv)
 
-def main():
-    """Main function to evaluate the generation capabilities of the models."""
+def main() -> None:
+    """Main function to evaluate the generation capabilities of the models.
+
+    Args:
+        None
+
+    Returns:
+        None
+    """
     args = parse_arguments()
-    batch_size = 10  
-    num_examples = 10
-    # if num_examples % batch_size != 0:
-    #     raise ValueError(f"num_examples ({num_examples}) must be divisible by batch_size ({batch_size})")
-    output_csv = f"out/gen-models/eval_{args.model_name.split('/')[-1]}.csv"
-    output_json = f"out/gen-models/generated_paraphrases_{args.model_name.split('/')[-1]}.json"
+    batch_size: int = 10  
+    num_examples: int = 10
+    
+    output_csv: str = f"out/gen-models/eval_{args.model_name.split('/')[-1]}.csv"
+    output_json: str = f"out/gen-models/generated_paraphrases_{args.model_name.split('/')[-1]}.json"
 
     # Read sentences by type from the APTY dataset
-    apty_data = read_sentences_by_type("out/basesentences", num_examples=num_examples)    
+    apty_data: Dict[str, Dict[str, Any]] = read_sentences_by_type("out/basesentences", num_examples=num_examples)    
+
     # Load the ETPC dataset and filter out sentences without paraphrases
     etpc_data = (
         load_dataset("jpwahle/etpc", split="train")
@@ -583,12 +602,14 @@ def main():
     )
 
     # Create prompts and references from the test set
+    etpc_prompts: List[str]
+    etpc_references: List[str]
     etpc_prompts, etpc_references = create_etpc_prompts(etpc_data)
 
     tokenizer = load_tokenizer(args.model_name)
     
     # Pre-tokenize APTY data
-    tokenized_apty_data = {
+    tokenized_apty_data: Dict[str, Dict[str, Any]] = {
         paraphrase_type: {
             **tokenize_data(tokenizer, [
                 f"Instruction: Given the following sentence, generate a paraphrase with the following type. "
@@ -602,10 +623,10 @@ def main():
     }
 
     # Pre-tokenize ETPC data
-    tokenized_etpc_data = tokenize_data(tokenizer, etpc_prompts)
+    tokenized_etpc_data: Dict[str, Any] = tokenize_data(tokenizer, etpc_prompts)
     tokenized_etpc_data["original_sentences"] = etpc_prompts
 
-    models = [
+    models: List[Tuple[str, Optional[str], str]] = [
         (args.model_name, None, "base_model"),
         (args.model_name, args.etpc_dir, "etpc_model"),
         (args.model_name, args.dpo_dir, "dpo_model"),    # DPO adapter 
@@ -613,7 +634,8 @@ def main():
     ]
 
     # Evaluate the models on the APTY and ETPC datasets
-    generate_and_evaluate(tokenizer, models, tokenized_apty_data, tokenized_etpc_data, 
+    generate_and_evaluate(
+        tokenizer, models, tokenized_apty_data, tokenized_etpc_data, 
         etpc_references, output_csv, output_json, batch_size
     )
 if __name__ == "__main__":
