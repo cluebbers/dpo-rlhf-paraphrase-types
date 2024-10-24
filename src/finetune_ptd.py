@@ -209,9 +209,10 @@ def compute_metrics(
 
     # Compute metrics
     accuracy = accuracy_score(labels.flatten(), preds.flatten())
-    precision = precision_score(labels.flatten(), preds.flatten(), average='macro', zero_division=0)
-    recall = recall_score(labels.flatten(), preds.flatten(), average='macro', zero_division=0)
-    f1 = f1_score(labels.flatten(), preds.flatten(), average='macro', zero_division=0)
+    precision = precision_score(labels, preds, average='macro', zero_division=0)
+    recall = recall_score(labels, preds, average='macro', zero_division=0)
+    f1 = f1_score(labels, preds, average='macro', zero_division=0)
+    subset_accuracy = np.mean(np.all(labels == preds, axis=1))
 
     # Generate detailed classification report for individual paraphrase types
     report = classification_report(
@@ -224,6 +225,7 @@ def compute_metrics(
 
     return {
         'accuracy': accuracy,
+        "subset_accuracy": subset_accuracy,
         'precision': precision,
         'recall': recall,
         'f1': f1,
