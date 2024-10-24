@@ -357,7 +357,7 @@ def main():
             #learning_rate=4.0975283438994273e-05,
             #weight_decay=0.0,
             eval_strategy="epoch",
-            save_strategy="epoch",
+            save_strategy="no",
             save_total_limit=1,
             fp16=True,
             num_train_epochs=50,
