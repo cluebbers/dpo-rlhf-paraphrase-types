@@ -216,9 +216,8 @@ def compute_metrics(
 
     # Generate detailed classification report for individual paraphrase types
     report = classification_report(
-        labels, preds, target_names=target_names, output_dict=True
+        labels, preds, target_names=target_names, output_dict=True, zero_division=0, 
     )
-    macro_f1_from_report = report['macro avg']['f1-score']
 
     global detailed_classification_report
     detailed_classification_report = report
@@ -229,7 +228,6 @@ def compute_metrics(
         'precision': precision,
         'recall': recall,
         'f1': f1,
-        "macro-f1": macro_f1_from_report,
     }
 
 def split_dataset_by_type(
@@ -325,7 +323,7 @@ def split_dataset_by_type(
     print(f"Test counts: {test_type_counts}")
 
     # Return datasets and counts
-    return train_dataset, test_dataset, train_type_counts, test_type_counts
+    return train_dataset, test_dataset
 
 def count_paraphrase_types(dataset: Dataset) -> Dict[str, int]:
     """
@@ -413,6 +411,33 @@ def compute_class_weights(train_dataset: Dataset) -> torch.Tensor:
     return class_weights
 
 
+def load_hyperparameters_from_csv(csv_path: str) -> Dict[str, Union[float, int, List[float]]]:
+    """
+    Load hyperparameters from a CSV file.
+
+    Args:
+        csv_path (str): Path to the CSV file containing hyperparameters.
+
+    Returns:
+        Dict[str, Union[float, int, List[float]]]: A dictionary with the hyperparameters.
+    """
+    df = pd.read_csv(csv_path)
+    
+    # Extract the first (and only) row as a dictionary
+    hyperparameters = df.iloc[0].to_dict()
+    
+    # Convert batch size to integer
+    hyperparameters["per_device_train_batch_size"] = int(hyperparameters["per_device_train_batch_size"])
+
+
+    # Extract class weights as a list from the individual `class_weight_*` entries
+    class_weights = [hyperparameters.pop(f"class_weight_{i}") for i in range(10)]
+    
+    # Add the list of class weights back into the dictionary
+    hyperparameters["class_weights"] = class_weights
+
+    return hyperparameters
+
 def main() -> None:
     """
     Main function for the script, which contains the following steps:
@@ -443,9 +468,9 @@ def main() -> None:
     # Split the dataset into training and testing sets with type counts
     train_dataset, test_dataset = split_dataset_by_type(dataset_tokenized, train_percent=0.8)
     
-    # In the `main` function, after splitting the dataset, calculate class weights:
-    class_weights: torch.Tensor = compute_class_weights(train_dataset)
-    
+    hyper_path = "/home/slim/dpo-rhlf-paraphrase-types/out/cls-models/deberta-base_qqp_pd_hyperparameters_ptd_20241024_113858.csv"
+    hyperparameters = load_hyperparameters_from_csv(hyper_path)
+
     def model_init(trial: Optional[Trial] = None) -> torch.nn.Module:
         """
         Initialize the model using the given trial or default hyperparameters.
@@ -466,7 +491,7 @@ def main() -> None:
                 trial.suggest_float(f"class_weight_{i}", 0.01, 20.0, log=True) for i in range(len(TOP_10_PARAPHRASE_TYPE_TO_ID))
             ], dtype=torch.float32)
         else:
-            class_weights = compute_class_weights(train_dataset)
+            class_weights = torch.tensor(hyperparameters["class_weights"], dtype=torch.float32)
 
         config = AutoConfig.from_pretrained(
             args.model_name, 
@@ -495,16 +520,16 @@ def main() -> None:
         model_init=lambda trial: model_init(trial),  # Pass the trial object to model_init
         args=TrainingArguments(
             output_dir=f"./out/cls-models/{args.model_name.split('/')[-1]}_etpc_ptd", 
-            #per_device_train_batch_size=16,
-            #learning_rate=4.0975283438994273e-05,
-            #weight_decay=0.0,
+            per_device_train_batch_size=hyperparameters["per_device_train_batch_size"],
+            learning_rate=hyperparameters["learning_rate"],
+            weight_decay=hyperparameters["weight_decay"],
             eval_strategy="epoch",
             save_strategy="no",
             save_total_limit=1,
             fp16=True,
-            num_train_epochs=50,
-            metric_for_best_model='macro-f1',
-            load_best_model_at_end=True,
+            num_train_epochs=2,
+            metric_for_best_model='f1',
+            load_best_model_at_end=False,
             greater_is_better=True,
         ),
         train_dataset=train_dataset,
@@ -512,7 +537,6 @@ def main() -> None:
         tokenizer=tokenizer,
         data_collator=DataCollatorWithPadding(tokenizer=tokenizer, padding="longest"),
         compute_metrics=lambda p: compute_metrics(p.predictions, p.label_ids),
-        callbacks=[EarlyStoppingCallback(early_stopping_patience=5)],
     )
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -521,29 +545,24 @@ def main() -> None:
     best_run = trainer.hyperparameter_search(
         direction="maximize",
         hp_space=hyperparameter_space,
-        n_trials=300,  # Number of trials for hyperparameter search
+        n_trials=1,  # Number of trials for hyperparameter search
         backend="optuna"
     )
     
     # Save the best parameters after the search using a DataFrame
     best_hyperparameters: Dict[str, Union[float, int]] = best_run.hyperparameters
     best_params_df = pd.DataFrame([best_hyperparameters])
-    best_params_df.to_csv(f"out/cls-models/{args.model_name.split('/')[-1]}_hyperparameters_ptd_{timestamp}.csv", index=False)
-   
-    # Apply the best hyperparameters found by the search
-    trainer.args.learning_rate = best_hyperparameters['learning_rate']
-    trainer.args.weight_decay = best_hyperparameters['weight_decay']
-    trainer.args.per_device_train_batch_size = best_hyperparameters['per_device_train_batch_size']
+    
+    output_params= f"out/cls-models/{args.model_name.split('/')[-1]}_hyperparameters_ptd_{timestamp}.csv"
+    best_params_df.to_csv(output_params, index=False)
+    print(f"Results written to {output_params}")
+          
+    # trainer.train()
 
-    # Extract the best class weights for further use or logging
-    best_class_weights = [best_hyperparameters[f'class_weight_{i}'] for i in range(len(TOP_10_PARAPHRASE_TYPE_TO_ID))]
-    print(f"Best class weights: {best_class_weights}")
-      
-    trainer.train()
-
-    # Evaluate and write results to CSV
-    results = trainer.evaluate()    
-    write_results_to_csv(results, output_file=f"out/cls-models/{args.model_name.split('/')[-1]}_ptd_results_hyperclass_{timestamp}.csv")
+    # # Evaluate and write results to CSV
+    # results = trainer.evaluate()    
+    # results["hyperparameters"] = hyperparameters
+    # write_results_to_csv(results, output_file=f"out/cls-models/{args.model_name.split('/')[-1]}_ptd_results_hyperclass_{timestamp}.csv")
 
 if __name__ == "__main__":
     main()
