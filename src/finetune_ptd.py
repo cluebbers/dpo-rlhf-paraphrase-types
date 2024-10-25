@@ -4,7 +4,8 @@ import random
 from typing import Any, Dict, List, Optional, Tuple, Union
 from datetime import datetime
 
-from optuna.trial import Trial 
+import optuna
+import pickle
 import torch
 import pandas as pd
 import torch.nn as nn
@@ -199,23 +200,23 @@ def compute_metrics(
             - macro-f1: Macro F1 score from the classification report.
     """
     sigmoid = lambda x: 1 / (1 + np.exp(-x))  # Convert logits to probabilities
-    probs = sigmoid(predictions)
+    probs: np.ndarray = sigmoid(predictions)
     
     # Threshold probabilities to get binary predictions (multi-label classification)
-    preds = (probs > 0.5).astype(int)
+    preds: np.ndarray = (probs > 0.5).astype(int)
 
     # Map indices back to their respective types for metrics calculation
-    target_names = [ID_TO_TOP_10_PARAPHRASE_TYPE[i] for i in range(len(TOP_10_PARAPHRASE_TYPE_TO_ID))]
+    target_names: List[str] = [ID_TO_TOP_10_PARAPHRASE_TYPE[i] for i in range(len(TOP_10_PARAPHRASE_TYPE_TO_ID))]
 
     # Compute metrics
-    accuracy = accuracy_score(labels.flatten(), preds.flatten())
-    precision = precision_score(labels, preds, average='macro', zero_division=0)
-    recall = recall_score(labels, preds, average='macro', zero_division=0)
-    f1 = f1_score(labels, preds, average='macro', zero_division=0)
-    subset_accuracy = np.mean(np.all(labels == preds, axis=1))
+    accuracy: float = accuracy_score(labels.flatten(), preds.flatten())
+    precision: float = precision_score(labels, preds, average='macro', zero_division=0)
+    recall: float = recall_score(labels, preds, average='macro', zero_division=0)
+    f1: float = f1_score(labels, preds, average='macro', zero_division=0)
+    subset_accuracy: float = np.mean(np.all(labels == preds, axis=1))
 
     # Generate detailed classification report for individual paraphrase types
-    report = classification_report(
+    report: Dict[str, Any] = classification_report(
         labels, preds, target_names=target_names, output_dict=True, zero_division=0, 
     )
 
@@ -240,7 +241,7 @@ def split_dataset_by_type(
 
     Args:
         dataset (Dataset): The input dataset containing examples with paraphrase types.
-        train_percent (float, optional): The percentage of data to be used for training. Defaults to 0.8.
+        train_percent (float): The percentage of data to be used for training.
 
     Returns:
         Tuple[Dataset, Dataset, Dict[str, int], Dict[str, int]]: 
@@ -314,51 +315,10 @@ def split_dataset_by_type(
     train_dataset: Dataset = Dataset.from_list(train_examples)
     test_dataset: Dataset = Dataset.from_list(test_examples)
 
-    # Step 7: Use the existing count_paraphrase_types function to count occurrences
-    train_type_counts: Dict[str, int] = count_paraphrase_types(train_dataset)
-    test_type_counts: Dict[str, int] = count_paraphrase_types(test_dataset)
-
-    # Debug: Print final train and test counts
-    print(f"Train counts: {train_type_counts}")
-    print(f"Test counts: {test_type_counts}")
-
     # Return datasets and counts
     return train_dataset, test_dataset
 
-def count_paraphrase_types(dataset: Dataset) -> Dict[str, int]:
-    """
-    Counts the number of examples containing each paraphrase type, 
-    counting each example only once per type.
-
-    Args:
-        dataset (Dataset): The dataset to count paraphrase types from.
-
-    Returns:
-        Dict[str, int]: A dictionary mapping each paraphrase type to its count.
-    """
-    type_counts: Dict[str, int] = {}
-
-    # Iterate over the dataset and count the number of examples containing each paraphrase type
-    for example in dataset:
-        # Check if "paraphrase_types" field exists and is a list
-        if "paraphrase_types" not in example or not isinstance(example["paraphrase_types"], list):
-            # Skip the example if it doesn't have the "paraphrase_types" field
-            print(f"Skipping example due to missing paraphrase_types: {example}")
-            continue
-
-        # Use a set to track unique types within the current example
-        unique_types = set(ptype.strip().lower() for ptype in example["paraphrase_types"])
-
-        # Increment the count for each unique type that is in the top-10 list
-        for ptype in unique_types:
-            if ptype in TOP_10_PARAPHRASE_TYPES:
-                type_counts[ptype] = type_counts.get(ptype, 0) + 1
-    
-    # Return the counts as a dictionary
-    return type_counts
-
-
-def hyperparameter_space(trial: Trial) -> Dict[str, Union[float, int]]:
+def hyperparameter_space(trial: optuna.trial.Trial) -> Dict[str, Union[float, int]]:
     """
     Define the hyperparameter space to be searched by Optuna.
 
@@ -370,48 +330,22 @@ def hyperparameter_space(trial: Trial) -> Dict[str, Union[float, int]]:
     - per_device_train_batch_size (int): The batch size per device for training, sampled from a categorical distribution of [16, 32].
 
     The hyperparameters are sampled by Optuna and passed to the Trainer for training.
+
+    Args:
+        trial (Trial): The Optuna trial to sample hyperparameters from.
+
+    Returns:
+        Dict[str, Union[float, int]]: A dictionary of sampled hyperparameters.
     """
     return {
-        "learning_rate": trial.suggest_float("learning_rate", 1e-5, 1e-1, log=True),
-        "weight_decay": trial.suggest_float("weight_decay", 1e-6,1e-2, log=True),
+        "learning_rate": trial.suggest_float("learning_rate", 5e-5, 7e-5, log=True),
+        "weight_decay": trial.suggest_float("weight_decay", 1e-4,5e-4, log=True),
         "per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [16, 32]),
     }
 
-
-
-def compute_class_weights(train_dataset: Dataset) -> torch.Tensor:
-    """
-    Compute class weights for handling imbalanced datasets.
-    
-    Weights are calculated as the inverse of class frequencies to ensure that 
-    each class contributes equally to the loss, helping to handle class imbalance.
-
-    Args:
-        train_dataset (Dataset): The training dataset containing labeled examples.
-
-    Returns:
-        torch.Tensor: A tensor containing the computed class weights.
-    """
-    # Initialize an array to count occurrences of each class
-    label_counts: np.ndarray = np.zeros(len(TOP_10_PARAPHRASE_TYPE_TO_ID))
-    
-    # Add up the label counts for each class across all examples in the dataset
-    for labels in train_dataset["labels"]:
-        label_counts += np.array(labels)
-
-    # Total number of examples in the dataset
-    total_samples: int = len(train_dataset)
-    
-    # Compute class weights using the formula: total_samples / (num_classes * class_count)
-    class_weights: np.ndarray = total_samples / (len(TOP_10_PARAPHRASE_TYPE_TO_ID) * label_counts)
-    
-    # Convert the class weights to a PyTorch tensor
-    class_weights: torch.Tensor = torch.tensor(class_weights, dtype=torch.float32)
-
-    return class_weights
-
-
-def load_hyperparameters_from_csv(csv_path: str) -> Dict[str, Union[float, int, List[float]]]:
+def load_hyperparameters_from_csv(
+    csv_path: str
+) -> Dict[str, Union[float, int, List[float]]]:
     """
     Load hyperparameters from a CSV file.
 
@@ -421,18 +355,22 @@ def load_hyperparameters_from_csv(csv_path: str) -> Dict[str, Union[float, int, 
     Returns:
         Dict[str, Union[float, int, List[float]]]: A dictionary with the hyperparameters.
     """
-    df = pd.read_csv(csv_path)
-    
-    # Extract the first (and only) row as a dictionary
-    hyperparameters = df.iloc[0].to_dict()
-    
-    # Convert batch size to integer
-    hyperparameters["per_device_train_batch_size"] = int(hyperparameters["per_device_train_batch_size"])
+    # Read the CSV file into a Pandas DataFrame
+    df: pd.DataFrame = pd.read_csv(csv_path)
 
+    # Extract the first (and only) row as a dictionary
+    hyperparameters: Dict[str, Union[float, int, List[float]]] = df.iloc[0].to_dict()
+
+    # Convert batch size to integer
+    hyperparameters["per_device_train_batch_size"] = int(
+        hyperparameters["per_device_train_batch_size"]
+    )
 
     # Extract class weights as a list from the individual `class_weight_*` entries
-    class_weights = [hyperparameters.pop(f"class_weight_{i}") for i in range(10)]
-    
+    class_weights: List[float] = [
+        hyperparameters.pop(f"class_weight_{i}") for i in range(10)
+    ]
+
     # Add the list of class weights back into the dictionary
     hyperparameters["class_weights"] = class_weights
 
@@ -468,10 +406,10 @@ def main() -> None:
     # Split the dataset into training and testing sets with type counts
     train_dataset, test_dataset = split_dataset_by_type(dataset_tokenized, train_percent=0.8)
     
-    hyper_path = "/home/slim/dpo-rhlf-paraphrase-types/out/cls-models/deberta-base_qqp_pd_hyperparameters_ptd_20241024_113858.csv"
+    hyper_path = "/home/slim/dpo-rhlf-paraphrase-types/out/cls-models/deberta-base_qqp_pd_hyperparameters_ptd_20241024_211334.csv"
     hyperparameters = load_hyperparameters_from_csv(hyper_path)
 
-    def model_init(trial: Optional[Trial] = None) -> torch.nn.Module:
+    def model_init(trial: Optional[optuna.trial.Trial] = None) -> torch.nn.Module:
         """
         Initialize the model using the given trial or default hyperparameters.
 
@@ -488,7 +426,16 @@ def main() -> None:
         if trial is not None:
             # Extract class weights from the trial
             class_weights = torch.tensor([
-                trial.suggest_float(f"class_weight_{i}", 0.01, 20.0, log=True) for i in range(len(TOP_10_PARAPHRASE_TYPE_TO_ID))
+                trial.suggest_float(f"class_weight_0", 6.5, 8.5, log=True),
+                trial.suggest_float(f"class_weight_1", 0.10, 0.25, log=True),
+                trial.suggest_float(f"class_weight_2", 0.35, 0.7, log=True),
+                trial.suggest_float(f"class_weight_3", 0.60, 1.5, log=True),
+                trial.suggest_float(f"class_weight_4", 3.0, 4.5, log=True),
+                trial.suggest_float(f"class_weight_5", 2.5, 4.0, log=True),
+                trial.suggest_float(f"class_weight_6", 0.010, 0.025, log=True),
+                trial.suggest_float(f"class_weight_7", 0.015, 0.025, log=True),
+                trial.suggest_float(f"class_weight_8", 0.010, 0.025, log=True),
+                trial.suggest_float(f"class_weight_9", 3.0, 4.5, log=True),
             ], dtype=torch.float32)
         else:
             class_weights = torch.tensor(hyperparameters["class_weights"], dtype=torch.float32)
@@ -527,7 +474,7 @@ def main() -> None:
             save_strategy="no",
             save_total_limit=1,
             fp16=True,
-            num_train_epochs=2,
+            num_train_epochs=20, #5 for first try,set to 10 for refined search
             metric_for_best_model='f1',
             load_best_model_at_end=False,
             greater_is_better=True,
@@ -540,29 +487,30 @@ def main() -> None:
     )
     
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    # Perform the hyperparameter search using Optuna
-    best_run = trainer.hyperparameter_search(
-        direction="maximize",
-        hp_space=hyperparameter_space,
-        n_trials=1,  # Number of trials for hyperparameter search
-        backend="optuna"
-    )
+        
+    # # Perform the hyperparameter search using Optuna
+    # best_run = trainer.hyperparameter_search(
+    #     direction="maximize",
+    #     hp_space=hyperparameter_space,
+    #     n_trials=50,  # Number of trials for hyperparameter search
+    #     backend="optuna"
+    # )
     
-    # Save the best parameters after the search using a DataFrame
-    best_hyperparameters: Dict[str, Union[float, int]] = best_run.hyperparameters
-    best_params_df = pd.DataFrame([best_hyperparameters])
+    # # Save the best parameters after the search using a DataFrame
+    # best_hyperparameters: Dict[str, Union[float, int]] = best_run.hyperparameters
+    # best_params_df = pd.DataFrame([best_hyperparameters])
     
-    output_params= f"out/cls-models/{args.model_name.split('/')[-1]}_hyperparameters_ptd_{timestamp}.csv"
-    best_params_df.to_csv(output_params, index=False)
-    print(f"Results written to {output_params}")
+    # output_params= f"out/cls-models/{args.model_name.split('/')[-1]}_hyperparameters_ptd_{timestamp}.csv"
+    # best_params_df.to_csv(output_params, index=False)
+    # print(f"Results written to {output_params}")
           
-    # trainer.train()
+    trainer.train()
 
-    # # Evaluate and write results to CSV
-    # results = trainer.evaluate()    
-    # results["hyperparameters"] = hyperparameters
-    # write_results_to_csv(results, output_file=f"out/cls-models/{args.model_name.split('/')[-1]}_ptd_results_hyperclass_{timestamp}.csv")
+    # Evaluate and write results to CSV
+    results = trainer.evaluate()    
+    results["hyperparameters"] = hyperparameters
+    write_results_to_csv(results, output_file=f"out/cls-models/{args.model_name.split('/')[-1]}_ptd_results_hyperclass_{timestamp}.csv")
+    trainer.save_model(f"./out/cls-models/{args.model_name.split('/')[-1]}_etpc_ptd")
 
 if __name__ == "__main__":
     main()
