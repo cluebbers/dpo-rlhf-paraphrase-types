@@ -1,6 +1,6 @@
 from transformers import AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
-from transformers import pipeline, BitsAndBytesConfig
-from trl import PPOTrainer, PPOConfig, AutoModelForCausalLMWithValueHead
+from transformers import pipeline, BitsAndBytesConfig, AutoModelForSequenceClassification
+from trl import PPOTrainer, PPOConfig, AutoModelForCausalLMWithValueHead, PPOv2Trainer, PPOv2Config
 from typing import Tuple, Dict, List, Any
 from datasets import Dataset
 import torch
@@ -9,7 +9,7 @@ from tqdm import tqdm
 from huggingface_hub import login
 import os
 from torch.utils.data import DataLoader
-from peft import LoraConfig, TaskType, PeftModel, get_peft_model
+
 
 def login_to_huggingface(token_path=None):
     """
@@ -49,8 +49,8 @@ def setup_model_and_tokenizer(
     )
     
     tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B",
-                                              padding_side="left",  # Set padding side to left
-                                              use_fast=True  # Use fast tokenizer implementation
+                                              use_fast=True,  # Use fast tokenizer implementation
+                                                padding_side="left",
                                               )
     
     tokenizer.pad_token = tokenizer.eos_token
@@ -77,14 +77,15 @@ def setup_ppo_trainer(model, tokenizer, train_dataset, batch_size, mini_batch_si
         PPOTrainer: The set up PPO trainer.
     """
     # Set up the training arguments
-    training_args = PPOConfig(
+    training_args = PPOv2Config(
         seed=42,
         batch_size=batch_size,
         mini_batch_size =mini_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
+        output_dir="out/gen-models/ppo_model"
     )
     
-    return PPOTrainer(
+    return PPOv2Trainer(
         model=model,
         tokenizer=tokenizer,
         config=training_args,
@@ -136,41 +137,15 @@ def read_sentences_by_type(
 
     return sentences_by_type
 
-def tokenize_data(
-    tokenizer: PreTrainedTokenizerBase,
-    prompts: List[str],
-) -> Dict[str, torch.Tensor]:
-    """
-    Tokenize the prompts using the provided tokenizer.
-
-    Args:
-        tokenizer (PreTrainedTokenizerBase): The tokenizer to use.
-        prompts (List[str]): The list of prompts to tokenize.
-
-    Returns:
-        Dict[str, torch.Tensor]: A dictionary containing the tokenized input IDs and attention mask.
-    """
-    # Tokenize the prompts
-    tokenized_inputs: Dict[str, torch.Tensor] = tokenizer(
-        prompts,
-        return_tensors="pt",  # Return PyTorch tensors
-        padding=True,  # Pad the inputs to the longest sequence
-        truncation=True,  # Truncate long sequences
-    )
-
-    return tokenized_inputs
-
-
-
 def main():
     num_examples= 10    
-    mini_batch_size=4
-    gradient_accumulation_steps=4
+    mini_batch_size=1
+    gradient_accumulation_steps=1
     batch_size=mini_batch_size * gradient_accumulation_steps
     
     login_to_huggingface("/home/slim/dpo-rhlf-paraphrase-types/token_file.txt")
     
-    output_dir= "out/gen-models"
+    
     
     # Setup device
     if torch.cuda.is_available():        
@@ -228,7 +203,10 @@ def main():
     reward_model_name = "/home/slim/dpo-rhlf-paraphrase-types/out/cls-models/deberta-base_qqp_pd" 
       
     reward_model_name = "microsoft/deberta-base" 
-    reward_model = pipeline("text-classification", model=reward_model_name, device=device, torch_dtype=torch.bfloat16)
+    reward_model = reward_model = AutoModelForSequenceClassification.from_pretrained(
+        training_args.reward_model_path, trust_remote_code=model_config.trust_remote_code, num_labels=1
+    )
+    #TODO
     
     torch.cuda.empty_cache()
     
