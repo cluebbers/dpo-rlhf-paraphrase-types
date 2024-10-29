@@ -1,14 +1,12 @@
-from transformers import AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
+from transformers import AutoTokenizer
 from transformers import BitsAndBytesConfig, AutoModelForSequenceClassification, AutoModelForCausalLM
-from trl import PPOTrainer, PPOConfig, AutoModelForCausalLMWithValueHead, PPOv2Trainer, PPOv2Config
-from typing import Tuple, Dict, List, Any
+from trl import PPOv2Trainer, PPOv2Config
+from typing import Dict, List, Any
 from datasets import Dataset
 import torch
 import logging
-from tqdm import tqdm
 from huggingface_hub import login
 import os
-from torch.utils.data import DataLoader
 from peft import LoraConfig, TaskType, get_peft_model
 
 
@@ -108,9 +106,9 @@ def main():
     tokenizer.pad_token = tokenizer.eos_token
     
     bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,  # Load in 4-bit precision
-        bnb_4bit_compute_dtype=torch.bfloat16,  # Use bfloat16 for computations
-    )       
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        )       
     
     policy = AutoModelForCausalLM.from_pretrained(policy_name,
                 quantization_config=bnb_config,
@@ -127,7 +125,7 @@ def main():
             target_modules=["q_proj", "v_proj"],
             lora_dropout=0.05,
             bias="none"
-        )
+            )
         policy = get_peft_model(policy, peft_config)
         
     
@@ -136,6 +134,8 @@ def main():
     
     ref_policy = AutoModelForCausalLM.from_pretrained(policy_name)
     reward_model = AutoModelForSequenceClassification.from_pretrained(reward_model_name)
+    
+    torch.cuda.empty_cache()
     
     # Read sentences by type from the APTY dataset
     apty_data: Dict[str, Dict[str, Any]] = read_sentences_by_type("out/basesentences", num_examples=num_examples)     
@@ -163,44 +163,7 @@ def main():
     
     torch.cuda.empty_cache() 
     
-    trainer.train()
+    trainer.train() 
     
-
-    # generation_kwargs = {
-    #     "min_length": -1,
-    #     "top_k": 0.0,
-    #     "top_p": 1.0,
-    #     "do_sample": True,
-    #     "pad_token_id": tokenizer.eos_token_id,
-    #     "max_new_tokens":50,
-    # }
-        
-    # epochs=3
-    
-    # for epoch in tqdm(range(epochs), "epoch: "):
-    #     for batch in tqdm(train_loader):
-    #         if batch is None:
-    #             logging.error("Received a None batch from the dataloader")
-    #             continue
-    #         query_tensors = batch["input_ids"]
-    #         # Assuming query_tensors is a batch tensor of shape [batch_size, seq_len]
-    #         query_tensors = [query for query in batch["input_ids"]]
-        
-    #         #### Get response from SFTModel
-    #         response_tensors = ppo_trainer.generate(query_tensors, **generation_kwargs)
-    #         batch["response"] = [tokenizer.decode(r.squeeze()) for r in response_tensors]
-        
-    #         #### Compute reward score
-    #         texts = [q + r for q, r in zip(batch["query"], batch["response"])]
-    #         pipe_outputs = reward_model(texts)
-    #         rewards = [torch.tensor(output["score"], dtype=torch.bfloat16) for output in pipe_outputs]
-        
-    #         #### Run PPO step
-    #         stats = ppo_trainer.step(query_tensors, response_tensors, rewards)
-    #         ppo_trainer.log_stats(stats, batch, rewards)
-
-    
-    
-
 if __name__ == "__main__":
     main()
