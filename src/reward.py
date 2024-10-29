@@ -1,13 +1,37 @@
 from peft import LoraConfig, TaskType, get_peft_model
-from transformers import AutoModelForSequenceClassification, AutoTokenizer, PreTrainedTokenizerBase, PreTrainedModel,BitsAndBytesConfig
+import os
+from transformers import (AutoModelForSequenceClassification, 
+                          AutoTokenizer, 
+                          PreTrainedTokenizerBase, 
+                          PreTrainedModel,
+                          BitsAndBytesConfig,
+                          )
 from trl import RewardTrainer, RewardConfig
 import torch
 import argparse
 from datasets import Dataset, load_dataset
 from typing import Tuple
-from transformers  import get_scheduler
+from huggingface_hub import login
 
+def login_to_huggingface(token_path=None):
+    """
+    Login to the Hugging Face Hub using either the `HF_TOKEN` environment variable or a token file.
 
+    Args:
+        token_path (str, optional): Path to the file containing the Hugging Face token.
+
+    Returns:
+        None
+    """
+    # Check if the HF_TOKEN environment variable is set
+    hf_token = os.getenv("HF_TOKEN")
+    if not hf_token and token_path:
+        # If not, read the token from the file
+        with open(token_path, "r") as token_file:
+            hf_token = token_file.read().strip()
+    
+    # Login to the Hugging Face Hub
+    login(token=hf_token)
 
 def parse_args() -> argparse.Namespace:
     """
@@ -20,64 +44,58 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--model_name",
         type=str,
-        default="out/cls-models/deberta-base_qqp_pd",
+        default="/home/slim/dpo-rhlf-paraphrase-types/out/gen-models/llama-3.1-8b-etpc",
+        choices=["/home/slim/dpo-rhlf-paraphrase-types/out/gen-models/llama-3.1-8b-etpc",
+                 "/home/slim/dpo-rhlf-paraphrase-types/out/cls-models/deberta-base_qqp_pd",
+                 "/home/slim/dpo-rhlf-paraphrase-types/out/cls-models/deberta-v3-large_qqp_pd/checkpoint-56855"],
         help="Model name from Hugging Face hub."
     )
     return parser.parse_args()
 
-def load_datasets(train_file: str, eval_file: str) -> Tuple[Dataset, Dataset]:
+def process_dataset_for_reward_model(dataset: Dataset, tokenizer: PreTrainedTokenizerBase) -> Dataset:
     """
-    Load training and validation datasets from JSON files.
+    Processes the dataset for a reward model by tokenizing chosen and rejected responses in batches.
 
     Args:
-        train_file (str): Path to the training dataset JSON file.
-        eval_file (str): Path to the validation dataset JSON file.
+        dataset (Dataset): The dataset containing prompts, chosen, and rejected responses.
+        tokenizer (PreTrainedTokenizerBase): The tokenizer to use for encoding the text.
 
     Returns:
-        Tuple[Dataset, Dataset]: A tuple containing the training and validation datasets.
+        Dataset: A processed dataset with tokenized inputs for chosen and rejected responses.
     """
-    
-    # Load the datasets from JSON files
-    train_dataset = load_dataset('json', data_files={'train': train_file})['train']
-    validation_dataset = load_dataset('json', data_files={'validation': eval_file})['validation']
-    
-    # Return the datasets as a tuple
-    return train_dataset, validation_dataset
+    # Prepare lists of inputs for batch tokenization
+    chosen_inputs = [f"<|start_header_id|>user<|end_header_id|>{ex['prompt']}<|eot_id|><|start_header_id|>assistant<|end_header_id|>{ex['chosen']}<|eot_id|>" for ex in dataset]
+    rejected_inputs = [f"<|start_header_id|>user<|end_header_id|>{ex['prompt']}<|eot_id|><|start_header_id|>assistant<|end_header_id|>{ex['rejected']}<|eot_id|>" for ex in dataset]
 
-def process_dataset_for_reward_model(dataset, tokenizer):
+    # Tokenize all chosen responses in a single batch
+    chosen_tokens = tokenizer(
+        chosen_inputs,
+        truncation=True,
+        padding=True,
+        max_length=512,
+        return_tensors="pt"
+    )
+
+    # Tokenize all rejected responses in a single batch
+    rejected_tokens = tokenizer(
+        rejected_inputs,
+        truncation=True,
+        padding=True,
+        max_length=512,
+        return_tensors="pt"
+    )
+
+    # Convert tokenized data to lists for Dataset compatibility
     processed_data = {
-        "input_ids_chosen": [],
-        "attention_mask_chosen": [],
-        "input_ids_rejected": [],
-        "attention_mask_rejected": []
+        "input_ids_chosen": chosen_tokens["input_ids"].tolist(),
+        "attention_mask_chosen": chosen_tokens["attention_mask"].tolist(),
+        "input_ids_rejected": rejected_tokens["input_ids"].tolist(),
+        "attention_mask_rejected": rejected_tokens["attention_mask"].tolist()
     }
 
-    for example in dataset:
-        prompt = example["prompt"]
-        chosen = example["chosen"]
-        rejected = example["rejected"]
-
-        # Concatenate prompt with chosen and tokenize
-        chosen_input = prompt + " " + chosen
-        chosen_tokens = tokenizer(chosen_input, 
-                                  truncation=True, 
-                                  padding="longest", 
-                                  max_length=512, 
-                                  return_tensors="pt")
-        processed_data["input_ids_chosen"].append(chosen_tokens["input_ids"][0])
-        processed_data["attention_mask_chosen"].append(chosen_tokens["attention_mask"][0])
-
-        # Concatenate prompt with rejected and tokenize
-        rejected_input = prompt + " " + rejected
-        rejected_tokens = tokenizer(rejected_input, 
-                                    truncation=True, 
-                                    padding="longest", 
-                                    max_length=512, return_tensors="pt")
-        processed_data["input_ids_rejected"].append(rejected_tokens["input_ids"][0])
-        processed_data["attention_mask_rejected"].append(rejected_tokens["attention_mask"][0])
-
-    # Convert lists to tensor-friendly format
+    # Create and return the final dataset
     return Dataset.from_dict(processed_data)
+
 
 def main() -> None:
     """
@@ -93,68 +111,91 @@ def main() -> None:
         None
     """
     args = parse_args()
-        
-    # Automatically set device to 'cuda' if available, else 'cpu'
-    device: str = "cuda" if torch.cuda.is_available() else "cpu"
     
+    login_to_huggingface()
+    
+    # Load model and tokenizer
+            
     bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,  # Load in 4-bit precision
-    bnb_4bit_compute_dtype=torch.bfloat16,  # Use bfloat16 for computations
+    load_in_4bit=True,
+    bnb_4bit_compute_dtype=torch.bfloat16,
     )
-
-    # Load tokenizer and model
-    tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(args.model_name)
+        
     model: PreTrainedModel = AutoModelForSequenceClassification.from_pretrained(
         args.model_name, 
         quantization_config=bnb_config,
         torch_dtype=torch.bfloat16, 
-        num_labels=2, id2label={0: "negative", 1: "positive"}, label2id={"negative": 0, "positive": 1}
-    ).to(device)
+        low_cpu_mem_usage=True,
+        attn_implementation="flash_attention_2",
+        ignore_mismatched_sizes=True,
+        num_labels=1,
+        )
     
-    peft_config = LoraConfig(
-    task_type=TaskType.SEQ_CLS,
+    if not hasattr(model.config, "peft_type") or model.config.peft_type is None:
+        peft_config = LoraConfig(
+            task_type=TaskType.SEQ_CLS,
             r=8,  
             lora_alpha=32,  
+            #target_modules=["q_proj", "v_proj"],
             lora_dropout=0.05,
             bias="none"
         )
+        model = get_peft_model(model, peft_config)
     
-    model = get_peft_model(model, peft_config)
+    if args.model_name=="/home/slim/dpo-rhlf-paraphrase-types/out/gen-models/llama-3.1-8b-etpc":
+        tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B", 
+                                                                           padding_side="left",)      
+        
+    else:                                                
+        tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(args.model_name, 
+                                                                           padding_side="left",)
     
+    tokenizer.pad_token = tokenizer.eos_token
+    model.resize_token_embeddings(len(tokenizer))
+    model.config.pad_token_id = tokenizer.pad_token_id or model.config.eos_token_id 
+    
+    torch.cuda.empty_cache()
+    
+    # Load datasets
     train_json_path = "out/generation_apty_ranked_train.jsonl"
     eval_json_path = "out/generation_apty_ranked_test.jsonl"
-    train_dataset, eval_dataset = load_datasets(train_json_path, eval_json_path)
+    train_dataset = load_dataset('json', data_files={'train': train_json_path})['train']
+    eval_dataset = load_dataset('json', data_files={'validation': eval_json_path})['validation']
     train_dataset = process_dataset_for_reward_model(train_dataset, tokenizer)
     eval_dataset = process_dataset_for_reward_model(eval_dataset, tokenizer)
 
     torch.cuda.empty_cache()
     
+    # Define and train the reward model    
     training_args = RewardConfig(
             output_dir=f"./out/cls-models/reward_{args.model_name.split('/')[-1]}",
             max_length=512,
-            remove_unused_columns=False,   
+            remove_unused_columns=True, 
+            gradient_accumulation_steps=4,  
+            per_device_train_batch_size=8, 
+            load_best_model_at_end=True,
             bf16=True,     
             fp16=False,
-            num_train_epochs=20,
+            num_train_epochs=3,
             eval_strategy="epoch",
+            save_strategy="epoch",
             save_total_limit=1,
             lr_scheduler_type="reduce_lr_on_plateau",
-
-    )
+            weight_decay=0.01,
+            )
     
     trainer = RewardTrainer(
-    model=model,
-    args=training_args,
-    tokenizer=tokenizer,
-    train_dataset=train_dataset,
-    eval_dataset=eval_dataset,
-    peft_config=peft_config,
-
-
-)
-
+        model=model,
+        args=training_args,
+        tokenizer=tokenizer,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        peft_config=peft_config,
+        )
+    
+    torch.cuda.empty_cache()
+    
     trainer.train()
-    # Load and tokenize dataset
 
 if __name__ == "__main__":
     main()
