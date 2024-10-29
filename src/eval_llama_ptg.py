@@ -484,7 +484,6 @@ def generate_and_evaluate(
                     adapter_dir, 
                     torch_dtype=torch.bfloat16,  # Load in bfloat16 precision
                     low_cpu_mem_usage=True,
-                    #device_map="auto",
                     attn_implementation="flash_attention_2",
                 )
             else:
@@ -494,7 +493,6 @@ def generate_and_evaluate(
                     quantization_config=bnb_config,
                     torch_dtype=torch.bfloat16,  # Load in bfloat16 precision
                     low_cpu_mem_usage=True,
-                    #device_map="auto",
                     attn_implementation="flash_attention_2",
                 )
                 model.load_adapter(adapter_dir, adapter_name=model_suffix)
@@ -506,7 +504,6 @@ def generate_and_evaluate(
                 quantization_config=bnb_config,
                 torch_dtype=torch.bfloat16,  # Load in bfloat16 precision
                 low_cpu_mem_usage=True,
-                #device_map="auto",
                 attn_implementation="flash_attention_2",
             )
         
@@ -546,10 +543,10 @@ def generate_and_evaluate(
         metrics.append({
             "Model": model_name,
             "Adapter": model_suffix,
-            "ROUGE-1": avg_rouge_1,
-            "ROUGE-2": avg_rouge_2,
-            "ROUGE-L": avg_rouge_l,
-            "BLEU": avg_bleu,
+            "ROUGE-1": round(avg_rouge_1, 4),
+            "ROUGE-2": round(avg_rouge_2,4),
+            "ROUGE-L": round(avg_rouge_l,4),
+            "BLEU": round(avg_bleu,4),
         })
         
         # Clean up memory
