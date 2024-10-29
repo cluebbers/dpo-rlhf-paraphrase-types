@@ -72,7 +72,6 @@ def process_dataset_for_reward_model(dataset: Dataset, tokenizer: PreTrainedToke
         chosen_inputs,
         truncation=True,
         padding=True,
-        max_length=512,
         return_tensors="pt"
     )
 
@@ -81,7 +80,6 @@ def process_dataset_for_reward_model(dataset: Dataset, tokenizer: PreTrainedToke
         rejected_inputs,
         truncation=True,
         padding=True,
-        max_length=512,
         return_tensors="pt"
     )
 
@@ -112,7 +110,7 @@ def main() -> None:
     """
     args = parse_args()
     
-    login_to_huggingface()
+    login_to_huggingface("token_file.txt")
     
     # Load model and tokenizer
             
@@ -136,7 +134,7 @@ def main() -> None:
             task_type=TaskType.SEQ_CLS,
             r=8,  
             lora_alpha=32,  
-            #target_modules=["q_proj", "v_proj"],
+            target_modules=["q_proj", "v_proj"],
             lora_dropout=0.05,
             bias="none"
         )
@@ -170,13 +168,13 @@ def main() -> None:
     training_args = RewardConfig(
             output_dir=f"./out/cls-models/reward_{args.model_name.split('/')[-1]}",
             max_length=512,
-            remove_unused_columns=True, 
+            remove_unused_columns=False, 
             gradient_accumulation_steps=4,  
             per_device_train_batch_size=8, 
             load_best_model_at_end=True,
             bf16=True,     
             fp16=False,
-            num_train_epochs=3,
+            num_train_epochs=10,
             eval_strategy="epoch",
             save_strategy="epoch",
             save_total_limit=1,
