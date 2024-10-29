@@ -49,45 +49,78 @@ class ParaphraseTypeEvaluator:
         return paraphrase.strip()
 
     def evaluate_and_update_json(self, json_file_path: str, output_file_path: str) -> Dict[Tuple[str, str], float]:
+        # Load data from JSON file
         with open(json_file_path, 'r', encoding='utf-8') as file:
             data = json.load(file)
         
+        # Dictionary to store scores by model and dataset
         model_dataset_scores = {}
+        modified_data = []  # New list to store the modified entries
 
         for entry in data:
+            # Define the "data" structure with "Original" instead of "original"
+            task_data = {
+                "id": entry["id"],
+                "Original": entry["original"],  # Capital "O" for consistency with Label Studio expectation
+                "APT": entry.get("APT"),
+                "reference": entry.get("reference"),
+                "dataset": entry.get("dataset"),
+                "annotator": entry.get("annotator", 0),  # Default to 0 if annotator is not provided
+                "List": []
+            }
+            
+            # Set reference and true types
             reference = entry["reference"] if entry["reference"] else entry["original"]
             true_types = self.preprocess_apt(entry["APT"])
             dataset_name = entry.get("dataset", "Unknown")
             
+            paraphrase_id = 0
+            
             for paraphrase_entry in entry["List"]:
-                # Extract the first paraphrase using the new function
+                # Process each paraphrase and calculate scores
                 original_paraphrase = paraphrase_entry["paraphrase"]
                 paraphrase = self.extract_first_paraphrase(original_paraphrase)
                 model_name = paraphrase_entry["model"]
                 true_labels = [1 if ptype in true_types else 0 for ptype in TOP_10_PARAPHRASE_TYPES]
                 predicted_types = self.predict_paraphrase_types(reference, paraphrase)
                 pred_labels = [1 if ptype in predicted_types else 0 for ptype in TOP_10_PARAPHRASE_TYPES]
-                f1 = f1_score(true_labels, pred_labels, average="macro", zero_division=0)
+                f1 = round(f1_score(true_labels, pred_labels, average="macro", zero_division=0), 4)
 
-                if "evaluation" not in paraphrase_entry:
-                    paraphrase_entry["evaluation"] = {}
-                paraphrase_entry["evaluation"]["newmetric-F1"] = f1
-                paraphrase_entry["evaluation"]["newmetric-apt"] = predicted_types
+                # Create an entry for List with title and body structure
+                list_entry = {
+                    "id": paraphrase_id,
+                    "title": model_name,  # Title as empty if not provided
+                    "body": paraphrase,  # Place paraphrase under "body" as required
+                    # "evaluation": {
+                    #     "newmetric-F1": f1,
+                    #     "newmetric-apt": predicted_types
+                    # }
+                }
 
-                # Store scores by (Model, Dataset)
+                # Append the structured list entry
+                task_data["List"].append(list_entry)
+                
+                paraphrase_id += 1
+
+                # Track F1 scores by model and dataset
                 key = (model_name, dataset_name)
                 if key not in model_dataset_scores:
                     model_dataset_scores[key] = []
                 model_dataset_scores[key].append(f1)
 
-        # Save the updated JSON file
+            # Add task_data to modified_data, now correctly structured
+            modified_data.append({"data": task_data})
+
+        # Save the modified data to output JSON file
         with open(output_file_path, 'w', encoding='utf-8') as outfile:
-            json.dump(data, outfile, indent=4, ensure_ascii=False)
+            json.dump(modified_data, outfile, indent=4, ensure_ascii=False)
         
-        # Calculate the average F1 score for each model-dataset combination
+        # Calculate average F1 score for each model-dataset pair
         avg_model_scores = {key: np.mean(scores) for key, scores in model_dataset_scores.items()}
         print(f"Updated JSON with newmetric-F1 and newmetric-apt saved to {output_file_path}")
         return avg_model_scores
+
+
 
     def update_csv_with_f1(self, csv_file_path: str, output_csv_path: str, avg_model_scores: Dict[Tuple[str, str], float]) -> None:
         df = pd.read_csv(csv_file_path)
@@ -100,10 +133,10 @@ class ParaphraseTypeEvaluator:
         
         # Add new columns for F1 scores for each dataset
         df["newmetric-F1-APTY"] = df.apply(
-            lambda row: avg_model_scores.get((row["Adapter"], "APTY"), None), axis=1
+            lambda row: round(avg_model_scores.get((row["Adapter"], "APTY"), None),4), axis=1
         )
         df["newmetric-F1-ETPC"] = df.apply(
-            lambda row: avg_model_scores.get((row["Adapter"], "ETPC"), None), axis=1
+            lambda row: round(avg_model_scores.get((row["Adapter"], "ETPC"), None),4), axis=1
         )
 
         # Debugging: Print out the DataFrame head to verify the updates
@@ -114,7 +147,7 @@ class ParaphraseTypeEvaluator:
         print(f"Updated CSV with newmetric-F1-APTY and newmetric-F1-ETPC saved to {output_csv_path}")
 
 # Example usage:
-evaluator = ParaphraseTypeEvaluator(model_name="out/cls-models/deberta-base_qqp_pd_etpc_ptd/run-16/checkpoint-184")
+evaluator = ParaphraseTypeEvaluator(model_name="out/cls-models/deberta-base_qqp_pd_etpc_ptd")
 avg_model_scores = evaluator.evaluate_and_update_json(
     json_file_path="out/gen-models/generated_paraphrases_Llama-3.1-8B.json",
     output_file_path="out/gen-models/generated_paraphrases_Llama-3.1-8B_F1.json"
