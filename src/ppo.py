@@ -76,7 +76,7 @@ def read_sentences_by_type(
 
     return sentences_by_type
 
-def process_dataset(apty_data: Dict[str, Dict[str, Any]], tokenizer: PreTrainedTokenizerBase) -> List[Dict[str, Any]]:
+def process_dataset(apty_data: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
     
     queries = [
         f"<|start_header_id|>user<|end_header_id|>Instruction: Given the following sentence, generate a paraphrase with the following type. "
@@ -85,22 +85,6 @@ def process_dataset(apty_data: Dict[str, Dict[str, Any]], tokenizer: PreTrainedT
         for sentence in details["sentences"]
     ]
 
-
-    # # Tokenize the batch with padding and truncation handled automatically
-    # tokenized_queries = tokenizer(
-    #     queries,
-    #     padding=True,  # Pad to the longest sequence in the batch
-    #     truncation=True,  # Truncate if necessary
-    #     return_tensors="pt"  # Return as PyTorch tensors
-    # )
-
-    # {
-    #     "input_ids": tokenized_queries["input_ids"],
-    #     "attention_mask": tokenized_queries["attention_mask"],
-    #     "query": queries 
-    # }
-        
-    # Create the dataset with a single "query" column
     ppo_dataset_dict = {"query": queries}
     return Dataset.from_dict(ppo_dataset_dict)
     
@@ -109,6 +93,9 @@ def main():
     mini_batch_size=1
     gradient_accumulation_steps=1
     batch_size=mini_batch_size * gradient_accumulation_steps
+    
+    policy_name="out/gen-models/llama-3.1-8b-etpc"  
+    reward_model_name = "out/cls-models/reward_llama-3.1-8b-etpc/checkpoint-17" 
     
     login_to_huggingface("token_file.txt")  
     
@@ -123,9 +110,7 @@ def main():
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,  # Load in 4-bit precision
         bnb_4bit_compute_dtype=torch.bfloat16,  # Use bfloat16 for computations
-    )
-
-    policy_name="out/gen-models/llama-3.1-8b-etpc"      
+    )       
     
     policy = AutoModelForCausalLM.from_pretrained(policy_name,
                 quantization_config=bnb_config,
@@ -150,13 +135,11 @@ def main():
     policy.config.pad_token_id = tokenizer.pad_token_id or policy.config.eos_token_id     
     
     ref_policy = AutoModelForCausalLM.from_pretrained(policy_name)
+    reward_model = AutoModelForSequenceClassification.from_pretrained(reward_model_name)
     
     # Read sentences by type from the APTY dataset
     apty_data: Dict[str, Dict[str, Any]] = read_sentences_by_type("out/basesentences", num_examples=num_examples)     
-    train_dataset = process_dataset(apty_data, tokenizer)  
-        
-    reward_model_name = "out/cls-models/reward_llama-3.1-8b-etpc/checkpoint-17" 
-    reward_model = AutoModelForSequenceClassification.from_pretrained(reward_model_name)
+    train_dataset = process_dataset(apty_data)             
     
     torch.cuda.empty_cache()
     

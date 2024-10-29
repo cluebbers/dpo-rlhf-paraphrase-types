@@ -8,9 +8,7 @@ from transformers import (AutoModelForSequenceClassification,
                           )
 from trl import RewardTrainer, RewardConfig
 import torch
-import argparse
 from datasets import Dataset, load_dataset
-from typing import Tuple
 from huggingface_hub import login
 
 def login_to_huggingface(token_path=None):
@@ -32,25 +30,6 @@ def login_to_huggingface(token_path=None):
     
     # Login to the Hugging Face Hub
     login(token=hf_token)
-
-def parse_args() -> argparse.Namespace:
-    """
-    Parses command-line arguments.
-
-    Returns:
-        argparse.Namespace: The parsed command-line arguments.
-    """
-    parser = argparse.ArgumentParser(description="Train a paraphrase detection model.")
-    parser.add_argument(
-        "--model_name",
-        type=str,
-        default="/home/slim/dpo-rhlf-paraphrase-types/out/gen-models/llama-3.1-8b-etpc",
-        choices=["/home/slim/dpo-rhlf-paraphrase-types/out/gen-models/llama-3.1-8b-etpc",
-                 "/home/slim/dpo-rhlf-paraphrase-types/out/cls-models/deberta-base_qqp_pd",
-                 "/home/slim/dpo-rhlf-paraphrase-types/out/cls-models/deberta-v3-large_qqp_pd/checkpoint-56855"],
-        help="Model name from Hugging Face hub."
-    )
-    return parser.parse_args()
 
 def process_dataset_for_reward_model(dataset: Dataset, tokenizer: PreTrainedTokenizerBase) -> Dataset:
     """
@@ -108,7 +87,6 @@ def main() -> None:
     Returns:
         None
     """
-    args = parse_args()
     
     login_to_huggingface("token_file.txt")
     
@@ -118,9 +96,10 @@ def main() -> None:
     load_in_4bit=True,
     bnb_4bit_compute_dtype=torch.bfloat16,
     )
-        
+    
+    model_name = "out/gen-models/llama-3.1-8b-etpc"
     model: PreTrainedModel = AutoModelForSequenceClassification.from_pretrained(
-        args.model_name, 
+        model_name, 
         quantization_config=bnb_config,
         torch_dtype=torch.bfloat16, 
         low_cpu_mem_usage=True,
@@ -140,13 +119,9 @@ def main() -> None:
         )
         model = get_peft_model(model, peft_config)
     
-    if args.model_name=="/home/slim/dpo-rhlf-paraphrase-types/out/gen-models/llama-3.1-8b-etpc":
-        tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B", 
+
+    tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B", 
                                                                            padding_side="left",)      
-        
-    else:                                                
-        tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(args.model_name, 
-                                                                           padding_side="left",)
     
     tokenizer.pad_token = tokenizer.eos_token
     model.resize_token_embeddings(len(tokenizer))
@@ -166,7 +141,7 @@ def main() -> None:
     
     # Define and train the reward model    
     training_args = RewardConfig(
-            output_dir=f"./out/cls-models/reward_{args.model_name.split('/')[-1]}",
+            output_dir=f"./out/cls-models/reward_{model_name.split('/')[-1]}",
             max_length=512,
             remove_unused_columns=False, 
             gradient_accumulation_steps=4,  
