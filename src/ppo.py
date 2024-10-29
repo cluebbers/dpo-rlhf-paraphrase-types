@@ -1,5 +1,5 @@
 from transformers import AutoTokenizer, PreTrainedModel, PreTrainedTokenizerBase
-from transformers import pipeline, BitsAndBytesConfig, AutoModelForSequenceClassification
+from transformers import BitsAndBytesConfig, AutoModelForSequenceClassification, AutoModelForCausalLM
 from trl import PPOTrainer, PPOConfig, AutoModelForCausalLMWithValueHead, PPOv2Trainer, PPOv2Config
 from typing import Tuple, Dict, List, Any
 from datasets import Dataset
@@ -9,6 +9,7 @@ from tqdm import tqdm
 from huggingface_hub import login
 import os
 from torch.utils.data import DataLoader
+from peft import LoraConfig, TaskType, get_peft_model
 
 
 def login_to_huggingface(token_path=None):
@@ -31,68 +32,6 @@ def login_to_huggingface(token_path=None):
     # Login to the Hugging Face Hub
     login(token=hf_token)
     
-def setup_model_and_tokenizer(
-    model_name: str
-) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
-    """
-    Setup the model and tokenizer for the paraphrase detection task.
-
-    Args:
-        model_name (str): The name of the model to use.
-
-    Returns:
-        Tuple[PreTrainedModel, PreTrainedTokenizerBase]: The model and tokenizer.
-    """
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,  # Load in 4-bit precision
-        bnb_4bit_compute_dtype=torch.bfloat16,  # Use bfloat16 for computations
-    )
-    
-    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B",
-                                              use_fast=True,  # Use fast tokenizer implementation
-                                                padding_side="left",
-                                              )
-    
-    tokenizer.pad_token = tokenizer.eos_token
-    model = AutoModelForCausalLMWithValueHead.from_pretrained(model_name,
-                quantization_config=bnb_config,
-                torch_dtype=torch.bfloat16,  # Load in bfloat16 precision
-                low_cpu_mem_usage=True,
-                attn_implementation="flash_attention_2",
-            ) 
-    
-    return model, tokenizer
-
-def setup_ppo_trainer(model, tokenizer, train_dataset, batch_size, mini_batch_size, gradient_accumulation_steps) -> PPOTrainer:
-    """
-    Set up the PPO trainer with the given model, tokenizer, training dataset, and evaluation dataset.
-
-    Args:
-        model (PreTrainedModel): The model to train.
-        tokenizer (PreTrainedTokenizerBase): The tokenizer to use.
-        train_dataset (DatasetDict): The training dataset.
-        eval_dataset (DatasetDict): The evaluation dataset.
-
-    Returns:
-        PPOTrainer: The set up PPO trainer.
-    """
-    # Set up the training arguments
-    training_args = PPOv2Config(
-        seed=42,
-        batch_size=batch_size,
-        mini_batch_size =mini_batch_size,
-        gradient_accumulation_steps=gradient_accumulation_steps,
-        output_dir="out/gen-models/ppo_model"
-    )
-    
-    return PPOv2Trainer(
-        model=model,
-        tokenizer=tokenizer,
-        config=training_args,
-        dataset=train_dataset,
-    )
-    
-
 def read_sentences_by_type(
     data_dir: str, 
     num_examples: int
@@ -137,121 +76,148 @@ def read_sentences_by_type(
 
     return sentences_by_type
 
+def process_dataset(apty_data: Dict[str, Dict[str, Any]], tokenizer: PreTrainedTokenizerBase) -> List[Dict[str, Any]]:
+    
+    queries = [
+        f"<|start_header_id|>user<|end_header_id|>Instruction: Given the following sentence, generate a paraphrase with the following type. "
+        f"Sentence: {sentence} Paraphrase Type: {paraphrase_type}. <|eot_id|><|start_header_id|>assistant<|end_header_id|>Generated Paraphrase: "
+        for paraphrase_type, details in apty_data.items()
+        for sentence in details["sentences"]
+    ]
+
+
+    # # Tokenize the batch with padding and truncation handled automatically
+    # tokenized_queries = tokenizer(
+    #     queries,
+    #     padding=True,  # Pad to the longest sequence in the batch
+    #     truncation=True,  # Truncate if necessary
+    #     return_tensors="pt"  # Return as PyTorch tensors
+    # )
+
+    # {
+    #     "input_ids": tokenized_queries["input_ids"],
+    #     "attention_mask": tokenized_queries["attention_mask"],
+    #     "query": queries 
+    # }
+        
+    # Create the dataset with a single "query" column
+    ppo_dataset_dict = {"query": queries}
+    return Dataset.from_dict(ppo_dataset_dict)
+    
 def main():
     num_examples= 10    
     mini_batch_size=1
     gradient_accumulation_steps=1
     batch_size=mini_batch_size * gradient_accumulation_steps
     
-    login_to_huggingface("/home/slim/dpo-rhlf-paraphrase-types/token_file.txt")
+    login_to_huggingface("token_file.txt")  
     
+    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B",
+                                              use_fast=True,
+                                              padding_side="left",
+                                              )
     
+    tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+    tokenizer.pad_token = tokenizer.eos_token
     
-    # Setup device
-    if torch.cuda.is_available():        
-        device = torch.device("cuda")
-        logging.info(f"Using device: {torch.cuda.get_device_name(0)}")
-    else:
-        device = torch.device("cpu")
-        logging.info(f"Using device: {device}")
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,  # Load in 4-bit precision
+        bnb_4bit_compute_dtype=torch.bfloat16,  # Use bfloat16 for computations
+    )
+
+    policy_name="out/gen-models/llama-3.1-8b-etpc"      
     
+    policy = AutoModelForCausalLM.from_pretrained(policy_name,
+                quantization_config=bnb_config,
+                torch_dtype=torch.bfloat16,  
+                low_cpu_mem_usage=True,
+                attn_implementation="flash_attention_2",
+                ) 
     
-    torch.cuda.empty_cache()
+    if not hasattr(policy.config, "peft_type") or policy.config.peft_type is None:
+        peft_config = LoraConfig(
+            task_type=TaskType.SEQ_CLS,
+            r=8,  
+            lora_alpha=32,  
+            target_modules=["q_proj", "v_proj"],
+            lora_dropout=0.05,
+            bias="none"
+        )
+        policy = get_peft_model(policy, peft_config)
+        
     
-    model_name="/home/slim/dpo-rhlf-paraphrase-types/out/gen-models/llama-3.1-8b-etpc"        
-    model, tokenizer = setup_model_and_tokenizer(model_name)
+    policy.resize_token_embeddings(len(tokenizer))
+    policy.config.pad_token_id = tokenizer.pad_token_id or policy.config.eos_token_id     
+    
+    ref_policy = AutoModelForCausalLM.from_pretrained(policy_name)
     
     # Read sentences by type from the APTY dataset
-    apty_data: Dict[str, Dict[str, Any]] = read_sentences_by_type("out/basesentences", num_examples=num_examples)  
-    
-    queries = [
-        f"Instruction: Given the following sentence, generate a paraphrase with the following type. "
-        f"Sentence: {sentence} Paraphrase Type: {paraphrase_type}. Generated Paraphrase: "
-        for paraphrase_type, details in apty_data.items()
-        for sentence in details["sentences"]
-    ]
-    
-    # Create the dataset with a single "query" column
-    ppo_dataset_dict = {"query": queries}
-    train_dataset = Dataset.from_dict(ppo_dataset_dict)
-    
-    def collate_fn(batch):
-        # Extract the queries from the batch
-        queries = [b["query"] for b in batch]
-
-        # Tokenize the batch with padding and truncation handled automatically
-        tokenized_batch = tokenizer(
-            queries,
-            padding=True,  # Pad to the longest sequence in the batch
-            truncation=True,  # Truncate if necessary
-            return_tensors="pt"  # Return as PyTorch tensors
-        )
-
-        # Convert input_ids and attention_mask to bfloat16
-        tokenized_batch["input_ids"] = tokenized_batch["input_ids"].to(torch.long)
-        tokenized_batch["attention_mask"] = tokenized_batch["attention_mask"].to(torch.bfloat16)
-
-        return {
-            "input_ids": tokenized_batch["input_ids"],
-            "attention_mask": tokenized_batch["attention_mask"],
-            "query": queries  # Keep the original queries
-        }
-  
+    apty_data: Dict[str, Dict[str, Any]] = read_sentences_by_type("out/basesentences", num_examples=num_examples)     
+    train_dataset = process_dataset(apty_data, tokenizer)  
         
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
-    
-    reward_model_name = "/home/slim/dpo-rhlf-paraphrase-types/out/cls-models/deberta-base_qqp_pd" 
-      
-    reward_model_name = "microsoft/deberta-base" 
-    reward_model = reward_model = AutoModelForSequenceClassification.from_pretrained(
-        training_args.reward_model_path, trust_remote_code=model_config.trust_remote_code, num_labels=1
-    )
-    #TODO
+    reward_model_name = "out/cls-models/reward_llama-3.1-8b-etpc/checkpoint-17" 
+    reward_model = AutoModelForSequenceClassification.from_pretrained(reward_model_name)
     
     torch.cuda.empty_cache()
     
-    ppo_trainer = setup_ppo_trainer(model, tokenizer, train_dataset, 
-                                    batch_size=batch_size, 
-                                    mini_batch_size=mini_batch_size, 
-                                    gradient_accumulation_steps=gradient_accumulation_steps)
-        
-    generation_kwargs = {
-        "min_length": -1,
-        "top_k": 0.0,
-        "top_p": 1.0,
-        "do_sample": True,
-        "pad_token_id": tokenizer.eos_token_id,
-        "max_new_tokens":50,
-    }
-        
-    epochs=3
+    training_args = PPOv2Config(
+        seed=42,
+        batch_size=batch_size,
+        mini_batch_size =mini_batch_size,
+        gradient_accumulation_steps=gradient_accumulation_steps,
+        output_dir="out/gen-models/ppo_model",
+        save_total_limit=1,      
+        )
     
-    for epoch in tqdm(range(epochs), "epoch: "):
-        for batch in tqdm(train_loader):
-            if batch is None:
-                logging.error("Received a None batch from the dataloader")
-                continue
-            query_tensors = batch["input_ids"]
-            # Assuming query_tensors is a batch tensor of shape [batch_size, seq_len]
-            query_tensors = [query for query in batch["input_ids"]]
-        
-            #### Get response from SFTModel
-            response_tensors = ppo_trainer.generate(query_tensors, **generation_kwargs)
-            batch["response"] = [tokenizer.decode(r.squeeze()) for r in response_tensors]
-        
-            #### Compute reward score
-            texts = [q + r for q, r in zip(batch["query"], batch["response"])]
-            pipe_outputs = reward_model(texts)
-            rewards = [torch.tensor(output["score"], dtype=torch.bfloat16) for output in pipe_outputs]
-        
-            #### Run PPO step
-            stats = ppo_trainer.step(query_tensors, response_tensors, rewards)
-            ppo_trainer.log_stats(stats, batch, rewards)
+    trainer = PPOv2Trainer(
+        config=training_args,
+        tokenizer=tokenizer,
+        policy=policy,
+        ref_policy=ref_policy,
+        reward_model=reward_model,         
+        train_dataset=train_dataset,
+        )
+    
+    torch.cuda.empty_cache() 
+    
+    trainer.train()
+    
 
-    #### Save model
-    ppo_trainer.save_pretrained(f"./out/gen-models/ppo_model")
+    # generation_kwargs = {
+    #     "min_length": -1,
+    #     "top_k": 0.0,
+    #     "top_p": 1.0,
+    #     "do_sample": True,
+    #     "pad_token_id": tokenizer.eos_token_id,
+    #     "max_new_tokens":50,
+    # }
+        
+    # epochs=3
     
-    torch.cuda.empty_cache()  # Clear GPU cache before starting  
+    # for epoch in tqdm(range(epochs), "epoch: "):
+    #     for batch in tqdm(train_loader):
+    #         if batch is None:
+    #             logging.error("Received a None batch from the dataloader")
+    #             continue
+    #         query_tensors = batch["input_ids"]
+    #         # Assuming query_tensors is a batch tensor of shape [batch_size, seq_len]
+    #         query_tensors = [query for query in batch["input_ids"]]
+        
+    #         #### Get response from SFTModel
+    #         response_tensors = ppo_trainer.generate(query_tensors, **generation_kwargs)
+    #         batch["response"] = [tokenizer.decode(r.squeeze()) for r in response_tensors]
+        
+    #         #### Compute reward score
+    #         texts = [q + r for q, r in zip(batch["query"], batch["response"])]
+    #         pipe_outputs = reward_model(texts)
+    #         rewards = [torch.tensor(output["score"], dtype=torch.bfloat16) for output in pipe_outputs]
+        
+    #         #### Run PPO step
+    #         stats = ppo_trainer.step(query_tensors, response_tensors, rewards)
+    #         ppo_trainer.log_stats(stats, batch, rewards)
+
+    
+    
 
 if __name__ == "__main__":
     main()
