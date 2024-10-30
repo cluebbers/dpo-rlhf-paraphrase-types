@@ -7,12 +7,15 @@ import torch
 from datasets import Dataset, load_dataset
 from huggingface_hub import login
 from peft import LoraConfig, PeftConfig, PeftModel, TaskType, get_peft_model
-from transformers import (AutoModelForCausalLM, AutoTokenizer,
-                          BitsAndBytesConfig, PreTrainedModel,
-                          PreTrainedTokenizerBase)
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    PreTrainedModel,
+    PreTrainedTokenizerBase,
+)
 from trl import DPOConfig, DPOTrainer
 
-# Setup logging
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
@@ -24,8 +27,8 @@ def parse_arguments() -> argparse.Namespace:
 
     The following arguments can be specified:
 
-    --model_name (str): Path to the model to use for training. Defaults to "meta-llama/Llama-2-7b-hf".
-    --adapter_dir (str): Name of the PEFT adapter to use for training. Defaults to "out/gen-models/llama-7b-etpc".
+    --model_name (str): Path to the model to use for training. Defaults to "out/gen-models/llama-3.1-8b-etpc".
+    --adapter_dir (str): Name of the PEFT adapter to use for training. Defaults to None.
     --loss_type (str): Type of loss to use for training. Defaults to "sigmoid".
 
     Returns:
@@ -53,7 +56,6 @@ def parse_arguments() -> argparse.Namespace:
     )
     args = parser.parse_args()
 
-    # Convert the string "None" to actual None
     if args.adapter_dir == "None":
         args.adapter_dir = None
 
@@ -188,11 +190,14 @@ def setup_dpo_trainer(
         per_device_train_batch_size=8,  # Number of samples per batch on each device
         gradient_accumulation_steps=4,  # Number of batches to accumulate gradients for
         output_dir=output_dir,  # Directory to save the model to
-        max_length=1024,  # Maximum length of the input sequences
-        max_prompt_length=512,  # Maximum length of the prompts
-        fp16=True,  # Use mixed precision training
-        remove_unused_columns=False,  # Explicitly set this to avoid the warning
+        max_length=1024,
+        max_prompt_length=512,
+        fp16=True,
+        remove_unused_columns=False,
         loss_type=loss_type,  # The type of loss to use
+        save_strategy="best",
+        load_best_model_at_end=True,
+        num_train_epochs=10,
     )
 
     # Set up the DPO trainer
@@ -210,18 +215,14 @@ def main() -> None:
 
     This function parses command-line arguments, loads the model and tokenizer, loads the datasets, sets up the DPO trainer, trains the model, and saves the trained model.
     """
-    # Parse command-line arguments
     args = parse_arguments()
 
-    # Create the output directory if it does not exist
     sanitized_model_name = args.model_name.replace("/", "-")
     output_dir = f"./out/gen-models/dpo_{sanitized_model_name}_{args.loss_type}"
     os.makedirs(output_dir, exist_ok=True)
 
-    # Login to Hugging Face Hub
     login_to_huggingface()
 
-    # Setup device
     if torch.cuda.is_available():
         device = torch.device("cuda")
         logging.info(f"Using device: {torch.cuda.get_device_name(0)}")
@@ -229,30 +230,25 @@ def main() -> None:
         device = torch.device("cpu")
         logging.info(f"Using device: {device}")
 
-    # Load model and tokenizer
     model, tokenizer = load_model_and_tokenizer(
         args.model_name, args.adapter_dir, device
     )
     torch.cuda.empty_cache()
 
-    # Load datasets
     train_json_path = "out/generation_apty_ranked_train.jsonl"
     eval_json_path = "out/generation_apty_ranked_test.jsonl"
     train_dataset, eval_dataset = load_datasets(train_json_path, eval_json_path)
     torch.cuda.empty_cache()
 
-    # Setup DPO trainer
     trainer = setup_dpo_trainer(
         model, tokenizer, train_dataset, eval_dataset, output_dir, args.loss_type
     )
 
-    # Train the model
     logging.info("Starting DPO training...")
     torch.cuda.empty_cache()
     trainer.train()
     torch.cuda.empty_cache()
 
-    # Save the trained model
     trainer.save_model(output_dir)
     logging.info(f"Model saved to {output_dir}")
 
