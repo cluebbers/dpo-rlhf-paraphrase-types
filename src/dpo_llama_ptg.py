@@ -80,7 +80,7 @@ def login_to_huggingface(token_path=None):
             hf_token = token_file.read().strip()
 
     # Login to the Hugging Face Hub
-    login(token=hf_token)
+    login(token=hf_token, add_to_git_credential=True)
 
 
 def load_model_and_tokenizer(
@@ -109,7 +109,7 @@ def load_model_and_tokenizer(
         model_name, quantization_config=bnb_config
     )
     tokenizer = AutoTokenizer.from_pretrained(
-        "meta-llama/Llama-3.1-8B", padding_side="left", padding="longest"
+        "meta-llama/Llama-3.1-8B", padding_side="left", padding=True, truncation=True
     )
     tokenizer.pad_token = tokenizer.eos_token
 
@@ -187,17 +187,17 @@ def setup_dpo_trainer(
     # Set up the training arguments
     training_args = DPOConfig(
         eval_strategy="epoch",  # Evaluate the model at the end of each epoch
-        per_device_train_batch_size=8,  # Number of samples per batch on each device
+        per_device_train_batch_size=4,  # Number of samples per batch on each device
         gradient_accumulation_steps=4,  # Number of batches to accumulate gradients for
         output_dir=output_dir,  # Directory to save the model to
-        max_length=1024,
         max_prompt_length=512,
         fp16=True,
         remove_unused_columns=False,
         loss_type=loss_type,  # The type of loss to use
-        save_strategy="best",
+        save_strategy="epoch",
         load_best_model_at_end=True,
         num_train_epochs=10,
+        save_total_limit=1,
     )
 
     # Set up the DPO trainer
@@ -221,7 +221,7 @@ def main() -> None:
     output_dir = f"./out/gen-models/dpo_{sanitized_model_name}_{args.loss_type}"
     os.makedirs(output_dir, exist_ok=True)
 
-    login_to_huggingface()
+    login_to_huggingface("token_file.txt")
 
     if torch.cuda.is_available():
         device = torch.device("cuda")
