@@ -1,33 +1,35 @@
 import argparse
 import csv
-import random
-from typing import Any, Dict, List, Optional, Tuple, Union
-from datetime import datetime
-
-import optuna
 import pickle
-import torch
-import pandas as pd
-import torch.nn as nn
-import numpy as np
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, classification_report
+import random
 from collections import defaultdict
-from datasets import load_dataset, Dataset
-from transformers import (
-    AutoConfig,
-    AutoModelForSequenceClassification,
-    AutoTokenizer,
-    Trainer,
-    TrainingArguments,
-    DataCollatorWithPadding,
-    PreTrainedTokenizerBase,
-    EarlyStoppingCallback,
-)
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple, Union
+
+import numpy as np
+import optuna
+import pandas as pd
+import torch
+import torch.nn as nn
+from datasets import Dataset, load_dataset
+from sklearn.metrics import (accuracy_score, classification_report, f1_score,
+                             precision_score, recall_score)
+from transformers import (AutoConfig, AutoModelForSequenceClassification,
+                          AutoTokenizer, DataCollatorWithPadding,
+                          EarlyStoppingCallback, PreTrainedTokenizerBase,
+                          Trainer, TrainingArguments)
 
 TOP_10_PARAPHRASE_TYPES = [
-    "addition/deletion", "change of order", "derivational changes", "inflectional changes",
-    "punctuation changes", "same polarity substitution (contextual)", "semantic based",
-    "spelling changes", "subordination and nesting changes", "synthetic/analytic substitution"
+    "addition/deletion",
+    "change of order",
+    "derivational changes",
+    "inflectional changes",
+    "punctuation changes",
+    "same polarity substitution (contextual)",
+    "semantic based",
+    "spelling changes",
+    "subordination and nesting changes",
+    "synthetic/analytic substitution",
 ]
 
 # Manually assign IDs to each of the top-10 paraphrase types
@@ -41,7 +43,7 @@ TOP_10_PARAPHRASE_TYPE_TO_ID = {
     "semantic based": 6,
     "spelling changes": 7,
     "subordination and nesting changes": 8,
-    "synthetic/analytic substitution": 9
+    "synthetic/analytic substitution": 9,
 }
 
 # Reverse mapping for evaluation purposes
@@ -51,9 +53,10 @@ ID_TO_TOP_10_PARAPHRASE_TYPE = {v: k for k, v in TOP_10_PARAPHRASE_TYPE_TO_ID.it
 # Assuming `detailed_classification_report` is globally available
 detailed_classification_report = {}  # Placeholder for the actual report
 
+
 def write_results_to_csv(
     results: Dict[str, Union[float, str, Dict[str, Union[float, int]]]],
-    output_file: str = "evaluation_results.csv"
+    output_file: str = "evaluation_results.csv",
 ) -> None:
     """
     Writes evaluation results to a CSV file, including the classification report.
@@ -84,29 +87,34 @@ def write_results_to_csv(
 
         writer.writerow([])  # Add an empty row for readability
         writer.writerow(["Classification Report"])
-        writer.writerow(["Paraphrase Type", "Precision", "Recall", "F1-score", "Support"])
+        writer.writerow(
+            ["Paraphrase Type", "Precision", "Recall", "F1-score", "Support"]
+        )
 
         # Iterate over each label and write the metrics from the global report
         for label, metrics in detailed_classification_report.items():
             if isinstance(metrics, dict):
-                writer.writerow([
-                    label,
-                    metrics.get('precision', 'N/A'),  # Precision
-                    metrics.get('recall', 'N/A'),  # Recall
-                    metrics.get('f1-score', 'N/A'),  # F1-score
-                    metrics.get('support', 'N/A')  # Support
-                ])
+                writer.writerow(
+                    [
+                        label,
+                        metrics.get("precision", "N/A"),  # Precision
+                        metrics.get("recall", "N/A"),  # Recall
+                        metrics.get("f1-score", "N/A"),  # F1-score
+                        metrics.get("support", "N/A"),  # Support
+                    ]
+                )
             else:
                 # Handle average metrics like 'micro avg', 'macro avg', etc.
                 writer.writerow([label, metrics])
 
     print(f"Results written to {output_file}")
 
+
 def tokenize_examples(
-    examples: Dict[str, List[str]], 
-    sentence1_key: str, 
-    tokenizer: PreTrainedTokenizerBase, 
-    sentence2_key: Optional[str] = None
+    examples: Dict[str, List[str]],
+    sentence1_key: str,
+    tokenizer: PreTrainedTokenizerBase,
+    sentence2_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Tokenizes input sentences and generates corresponding labels based on the top-10 paraphrase types.
@@ -120,13 +128,13 @@ def tokenize_examples(
     Returns:
         Dict[str, Any]: The tokenized inputs with the labels and filtered paraphrase types.
     """
-    
+
     # Tokenize the input sentences
     tokenized_inputs = tokenizer(
-        examples[sentence1_key], 
-        examples[sentence2_key] if sentence2_key else None, 
-        truncation=True, 
-        max_length=256
+        examples[sentence1_key],
+        examples[sentence2_key] if sentence2_key else None,
+        truncation=True,
+        max_length=256,
     )
 
     # Determine the number of labels based on the top-10 paraphrase types
@@ -141,16 +149,22 @@ def tokenize_examples(
         for paraphrase_type in paraphrase_type_list:
             paraphrase_type_clean: str = paraphrase_type.strip().lower()
             # Map directly using the fixed dictionary
-            cls_id: Optional[int] = TOP_10_PARAPHRASE_TYPE_TO_ID.get(paraphrase_type_clean)
+            cls_id: Optional[int] = TOP_10_PARAPHRASE_TYPE_TO_ID.get(
+                paraphrase_type_clean
+            )
             if cls_id is not None:
                 binary_labels[cls_id] = 1
                 filtered_types.append(paraphrase_type_clean)
 
         labels.append(binary_labels)
-        filtered_paraphrase_types.append(filtered_types)  # Track only the types in the top-10
+        filtered_paraphrase_types.append(
+            filtered_types
+        )  # Track only the types in the top-10
 
     tokenized_inputs["labels"] = torch.tensor(labels, dtype=torch.float32)
-    tokenized_inputs["paraphrase_types"] = filtered_paraphrase_types  # Update with filtered types
+    tokenized_inputs["paraphrase_types"] = (
+        filtered_paraphrase_types  # Update with filtered types
+    )
 
     # Debugging: print just a small sample (1% of examples)
     if random.random() < 0.01:
@@ -158,6 +172,7 @@ def tokenize_examples(
         print(f"Corresponding binary labels: {labels[0]}")
 
     return tokenized_inputs
+
 
 def parse_arguments() -> argparse.Namespace:
     """
@@ -171,18 +186,19 @@ def parse_arguments() -> argparse.Namespace:
 
     # Add model name argument with default value and help description
     parser.add_argument(
-        "--model_name", 
-        type=str, 
-        default="out/cls-models/deberta-base_qqp_pd", 
-        help="Name of the model to use"
+        "--model_name",
+        type=str,
+        default="out/cls-models/deberta-base_qqp_pd",
+        help="Name of the model to use",
     )
 
     # Parse and return the command line arguments
     return parser.parse_args()
 
+
 def compute_metrics(
     predictions: np.ndarray,  # Model predictions as logits (B, C) where B is batch size and C is number of classes
-    labels: np.ndarray  # Binary labels (B, C) where B is batch size and C is number of classes
+    labels: np.ndarray,  # Binary labels (B, C) where B is batch size and C is number of classes
 ) -> Dict[str, float]:
     """
     Computes various metrics for multi-label evaluation.
@@ -201,42 +217,49 @@ def compute_metrics(
     """
     sigmoid = lambda x: 1 / (1 + np.exp(-x))  # Convert logits to probabilities
     probs: np.ndarray = sigmoid(predictions)
-    
+
     # Threshold probabilities to get binary predictions (multi-label classification)
     preds: np.ndarray = (probs > 0.5).astype(int)
 
     # Map indices back to their respective types for metrics calculation
-    target_names: List[str] = [ID_TO_TOP_10_PARAPHRASE_TYPE[i] for i in range(len(TOP_10_PARAPHRASE_TYPE_TO_ID))]
+    target_names: List[str] = [
+        ID_TO_TOP_10_PARAPHRASE_TYPE[i]
+        for i in range(len(TOP_10_PARAPHRASE_TYPE_TO_ID))
+    ]
 
     # Compute metrics
     accuracy: float = accuracy_score(labels.flatten(), preds.flatten())
-    precision: float = precision_score(labels, preds, average='macro', zero_division=0)
-    recall: float = recall_score(labels, preds, average='macro', zero_division=0)
-    f1: float = f1_score(labels, preds, average='macro', zero_division=0)
+    precision: float = precision_score(labels, preds, average="macro", zero_division=0)
+    recall: float = recall_score(labels, preds, average="macro", zero_division=0)
+    f1: float = f1_score(labels, preds, average="macro", zero_division=0)
     subset_accuracy: float = np.mean(np.all(labels == preds, axis=1))
 
     # Generate detailed classification report for individual paraphrase types
     report: Dict[str, Any] = classification_report(
-        labels, preds, target_names=target_names, output_dict=True, zero_division=0, 
+        labels,
+        preds,
+        target_names=target_names,
+        output_dict=True,
+        zero_division=0,
     )
 
     global detailed_classification_report
     detailed_classification_report = report
 
     return {
-        'accuracy': accuracy,
+        "accuracy": accuracy,
         "subset_accuracy": subset_accuracy,
-        'precision': precision,
-        'recall': recall,
-        'f1': f1,
+        "precision": precision,
+        "recall": recall,
+        "f1": f1,
     }
 
+
 def split_dataset_by_type(
-    dataset: Dataset, 
-    train_percent: float = 0.8
+    dataset: Dataset, train_percent: float = 0.8
 ) -> Tuple[Dataset, Dataset, Dict[str, int], Dict[str, int]]:
     """
-    Split dataset by paraphrase type, ensuring a balanced distribution of paraphrase types 
+    Split dataset by paraphrase type, ensuring a balanced distribution of paraphrase types
     in both train and test datasets. Each example can belong to multiple paraphrase types.
 
     Args:
@@ -244,7 +267,7 @@ def split_dataset_by_type(
         train_percent (float): The percentage of data to be used for training.
 
     Returns:
-        Tuple[Dataset, Dataset, Dict[str, int], Dict[str, int]]: 
+        Tuple[Dataset, Dataset, Dict[str, int], Dict[str, int]]:
             - Dataset: The training dataset.
             - Dataset: The testing dataset.
             - Dict[str, int]: Counts of paraphrase types in the training dataset.
@@ -252,9 +275,11 @@ def split_dataset_by_type(
     """
     paraphrase_type_to_examples: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     type_counts: Dict[str, int] = defaultdict(int)
-    
+
     # Normalize TOP_10_PARAPHRASE_TYPES to lowercase for consistent comparison
-    normalized_top_10_types = [ptype.strip().lower() for ptype in TOP_10_PARAPHRASE_TYPES]
+    normalized_top_10_types = [
+        ptype.strip().lower() for ptype in TOP_10_PARAPHRASE_TYPES
+    ]
 
     # Step 1: Filter the dataset and group examples by their paraphrase types
     filtered_examples: List[Dict[str, Any]] = []
@@ -263,14 +288,18 @@ def split_dataset_by_type(
             continue
 
         # Normalize and filter paraphrase types
-        filtered_types: List[str] = [ptype.strip().lower() for ptype in example["paraphrase_types"] if ptype.strip().lower() in normalized_top_10_types]
-        
+        filtered_types: List[str] = [
+            ptype.strip().lower()
+            for ptype in example["paraphrase_types"]
+            if ptype.strip().lower() in normalized_top_10_types
+        ]
+
         if not filtered_types:
             continue
-        
+
         example["paraphrase_types"] = filtered_types
         filtered_examples.append(example)
-        
+
         # Track examples for each paraphrase type
         for ptype in filtered_types:
             paraphrase_type_to_examples[ptype].append(example)
@@ -309,7 +338,9 @@ def split_dataset_by_type(
             allocated_ids.add(example["idx"])
 
     # Step 5: Finalize test examples based on the unique idx
-    test_examples: List[Dict[str, Any]] = [ex for ex in filtered_examples if ex['idx'] in test_examples]
+    test_examples: List[Dict[str, Any]] = [
+        ex for ex in filtered_examples if ex["idx"] in test_examples
+    ]
 
     # Step 6: Create train and test datasets from the split examples
     train_dataset: Dataset = Dataset.from_list(train_examples)
@@ -317,6 +348,7 @@ def split_dataset_by_type(
 
     # Return datasets and counts
     return train_dataset, test_dataset
+
 
 def hyperparameter_space(trial: optuna.trial.Trial) -> Dict[str, Union[float, int]]:
     """
@@ -339,12 +371,15 @@ def hyperparameter_space(trial: optuna.trial.Trial) -> Dict[str, Union[float, in
     """
     return {
         "learning_rate": trial.suggest_float("learning_rate", 5e-5, 7e-5, log=True),
-        "weight_decay": trial.suggest_float("weight_decay", 1e-4,5e-4, log=True),
-        "per_device_train_batch_size": trial.suggest_categorical("per_device_train_batch_size", [16, 32]),
+        "weight_decay": trial.suggest_float("weight_decay", 1e-4, 5e-4, log=True),
+        "per_device_train_batch_size": trial.suggest_categorical(
+            "per_device_train_batch_size", [16, 32]
+        ),
     }
 
+
 def load_hyperparameters_from_csv(
-    csv_path: str
+    csv_path: str,
 ) -> Dict[str, Union[float, int, List[float]]]:
     """
     Load hyperparameters from a CSV file.
@@ -376,6 +411,7 @@ def load_hyperparameters_from_csv(
 
     return hyperparameters
 
+
 def main() -> None:
     """
     Main function for the script, which contains the following steps:
@@ -396,16 +432,28 @@ def main() -> None:
     """
     args = parse_arguments()
 
-    dataset = load_dataset("jpwahle/etpc").filter(lambda x: x["etpc_label"] == 1)["train"]
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name, clean_up_tokenization_spaces=True)
+    dataset = load_dataset("jpwahle/etpc").filter(lambda x: x["etpc_label"] == 1)[
+        "train"
+    ]
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.model_name, clean_up_tokenization_spaces=True
+    )
 
     dataset_tokenized = dataset.map(
-        tokenize_examples, batched=True, fn_kwargs={"sentence1_key": "sentence1", "sentence2_key": "sentence2", "tokenizer": tokenizer}
+        tokenize_examples,
+        batched=True,
+        fn_kwargs={
+            "sentence1_key": "sentence1",
+            "sentence2_key": "sentence2",
+            "tokenizer": tokenizer,
+        },
     )
-    
+
     # Split the dataset into training and testing sets with type counts
-    train_dataset, test_dataset = split_dataset_by_type(dataset_tokenized, train_percent=0.8)
-    
+    train_dataset, test_dataset = split_dataset_by_type(
+        dataset_tokenized, train_percent=0.8
+    )
+
     hyper_path = "/home/slim/dpo-rhlf-paraphrase-types/out/cls-models/deberta-base_qqp_pd_hyperparameters_ptd_20241024_211334.csv"
     hyperparameters = load_hyperparameters_from_csv(hyper_path)
 
@@ -425,25 +473,30 @@ def main() -> None:
         # Use default weights if no trial is provided (e.g., when not performing hyperparameter search)
         if trial is not None:
             # Extract class weights from the trial
-            class_weights = torch.tensor([
-                trial.suggest_float(f"class_weight_0", 6.5, 8.5, log=True),
-                trial.suggest_float(f"class_weight_1", 0.10, 0.25, log=True),
-                trial.suggest_float(f"class_weight_2", 0.35, 0.7, log=True),
-                trial.suggest_float(f"class_weight_3", 0.60, 1.5, log=True),
-                trial.suggest_float(f"class_weight_4", 3.0, 4.5, log=True),
-                trial.suggest_float(f"class_weight_5", 2.5, 4.0, log=True),
-                trial.suggest_float(f"class_weight_6", 0.010, 0.025, log=True),
-                trial.suggest_float(f"class_weight_7", 0.015, 0.025, log=True),
-                trial.suggest_float(f"class_weight_8", 0.010, 0.025, log=True),
-                trial.suggest_float(f"class_weight_9", 3.0, 4.5, log=True),
-            ], dtype=torch.float32)
+            class_weights = torch.tensor(
+                [
+                    trial.suggest_float(f"class_weight_0", 6.5, 8.5, log=True),
+                    trial.suggest_float(f"class_weight_1", 0.10, 0.25, log=True),
+                    trial.suggest_float(f"class_weight_2", 0.35, 0.7, log=True),
+                    trial.suggest_float(f"class_weight_3", 0.60, 1.5, log=True),
+                    trial.suggest_float(f"class_weight_4", 3.0, 4.5, log=True),
+                    trial.suggest_float(f"class_weight_5", 2.5, 4.0, log=True),
+                    trial.suggest_float(f"class_weight_6", 0.010, 0.025, log=True),
+                    trial.suggest_float(f"class_weight_7", 0.015, 0.025, log=True),
+                    trial.suggest_float(f"class_weight_8", 0.010, 0.025, log=True),
+                    trial.suggest_float(f"class_weight_9", 3.0, 4.5, log=True),
+                ],
+                dtype=torch.float32,
+            )
         else:
-            class_weights = torch.tensor(hyperparameters["class_weights"], dtype=torch.float32)
+            class_weights = torch.tensor(
+                hyperparameters["class_weights"], dtype=torch.float32
+            )
 
         config = AutoConfig.from_pretrained(
-            args.model_name, 
-            num_labels=len(TOP_10_PARAPHRASE_TYPE_TO_ID), 
-            problem_type="multi_label_classification"
+            args.model_name,
+            num_labels=len(TOP_10_PARAPHRASE_TYPE_TO_ID),
+            problem_type="multi_label_classification",
         )
 
         model = AutoModelForSequenceClassification.from_pretrained(
@@ -464,9 +517,11 @@ def main() -> None:
         return model
 
     trainer = Trainer(
-        model_init=lambda trial: model_init(trial),  # Pass the trial object to model_init
+        model_init=lambda trial: model_init(
+            trial
+        ),  # Pass the trial object to model_init
         args=TrainingArguments(
-            output_dir=f"./out/cls-models/{args.model_name.split('/')[-1]}_etpc_ptd", 
+            output_dir=f"./out/cls-models/{args.model_name.split('/')[-1]}_etpc_ptd",
             per_device_train_batch_size=hyperparameters["per_device_train_batch_size"],
             learning_rate=hyperparameters["learning_rate"],
             weight_decay=hyperparameters["weight_decay"],
@@ -474,8 +529,8 @@ def main() -> None:
             save_strategy="no",
             save_total_limit=1,
             fp16=True,
-            num_train_epochs=20, #5 for first try,set to 10 for refined search
-            metric_for_best_model='f1',
+            num_train_epochs=20,  # 5 for first try,set to 10 for refined search
+            metric_for_best_model="f1",
             load_best_model_at_end=False,
             greater_is_better=True,
         ),
@@ -485,9 +540,9 @@ def main() -> None:
         data_collator=DataCollatorWithPadding(tokenizer=tokenizer, padding="longest"),
         compute_metrics=lambda p: compute_metrics(p.predictions, p.label_ids),
     )
-    
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
+
     # # Perform the hyperparameter search using Optuna
     # best_run = trainer.hyperparameter_search(
     #     direction="maximize",
@@ -495,22 +550,26 @@ def main() -> None:
     #     n_trials=50,  # Number of trials for hyperparameter search
     #     backend="optuna"
     # )
-    
+
     # # Save the best parameters after the search using a DataFrame
     # best_hyperparameters: Dict[str, Union[float, int]] = best_run.hyperparameters
     # best_params_df = pd.DataFrame([best_hyperparameters])
-    
+
     # output_params= f"out/cls-models/{args.model_name.split('/')[-1]}_hyperparameters_ptd_{timestamp}.csv"
     # best_params_df.to_csv(output_params, index=False)
     # print(f"Results written to {output_params}")
-          
+
     trainer.train()
 
     # Evaluate and write results to CSV
-    results = trainer.evaluate()    
+    results = trainer.evaluate()
     results["hyperparameters"] = hyperparameters
-    write_results_to_csv(results, output_file=f"out/cls-models/{args.model_name.split('/')[-1]}_ptd_results_hyperclass_{timestamp}.csv")
+    write_results_to_csv(
+        results,
+        output_file=f"out/cls-models/{args.model_name.split('/')[-1]}_ptd_results_hyperclass_{timestamp}.csv",
+    )
     trainer.save_model(f"./out/cls-models/{args.model_name.split('/')[-1]}_etpc_ptd")
+
 
 if __name__ == "__main__":
     main()

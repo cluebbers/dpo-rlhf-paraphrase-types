@@ -1,16 +1,18 @@
-import os
-import re
-import torch
 import argparse
 import json
+import os
+import re
+from collections import defaultdict
+
 import pandas as pd
-from tqdm import tqdm
+import torch
 from datasets import load_dataset
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
-from rouge import Rouge
-from transformers import AutoTokenizer, BartForConditionalGeneration
 from parascore import ParaScorer
-from collections import defaultdict
+from rouge import Rouge
+from tqdm import tqdm
+from transformers import AutoTokenizer, BartForConditionalGeneration
+
 
 class ParaphraseDataset(torch.utils.data.Dataset):
     """A dataset class for paraphrase generation."""
@@ -48,6 +50,7 @@ class ParaphraseDataset(torch.utils.data.Dataset):
             "attention_mask": input_data["attention_mask"].squeeze(0),
             "labels": label_data["input_ids"].squeeze(0),
         }
+
 
 class ParaphraseTypeDataset(torch.utils.data.Dataset):
     """A dataset class for paraphrase type generation."""
@@ -96,11 +99,22 @@ class ParaphraseTypeDataset(torch.utils.data.Dataset):
                 sentence[index] = f"<type-{type_id}>{sentence[index]}"
         return " ".join(sentence)
 
+
 def remove_type_tokens(text):
     """Remove <type-*> tokens from the text."""
     return re.sub(r"<type-\d+>", "", text)
 
-def eval_loop(data_loader, model, tokenizer, parascore_scorer, dataset_name, model_name, adapter_name=None, max_new_tokens=50):
+
+def eval_loop(
+    data_loader,
+    model,
+    tokenizer,
+    parascore_scorer,
+    dataset_name,
+    model_name,
+    adapter_name=None,
+    max_new_tokens=50,
+):
     """
     Performs evaluation on a given data loader using a pre-trained model and tokenizer.
 
@@ -115,7 +129,7 @@ def eval_loop(data_loader, model, tokenizer, parascore_scorer, dataset_name, mod
         max_new_tokens: The maximum number of new tokens to generate.
 
     Returns:
-        list: A list of dictionaries containing the paraphrase, source, target, 
+        list: A list of dictionaries containing the paraphrase, source, target,
         evaluation metrics, and model/dataset information.
     """
     model.eval()
@@ -125,9 +139,11 @@ def eval_loop(data_loader, model, tokenizer, parascore_scorer, dataset_name, mod
         for batch in tqdm(data_loader):
             inputs = batch["input_ids"].to(model.device)
             attention_masks = batch["attention_mask"].to(model.device)
-            
+
             # Use max_new_tokens to control the length of the generation
-            outputs = model.generate(inputs, attention_mask=attention_masks, max_new_tokens=max_new_tokens)
+            outputs = model.generate(
+                inputs, attention_mask=attention_masks, max_new_tokens=max_new_tokens
+            )
 
             # Convert to text (remove type tokens only from source_texts)
             pred_texts = [
@@ -138,37 +154,51 @@ def eval_loop(data_loader, model, tokenizer, parascore_scorer, dataset_name, mod
                 for target in batch["labels"]
             ]
             source_texts = [
-                remove_type_tokens(tokenizer.decode(inputs[i], skip_special_tokens=True))  # Remove type tokens from source
+                remove_type_tokens(
+                    tokenizer.decode(inputs[i], skip_special_tokens=True)
+                )  # Remove type tokens from source
                 for i in range(len(inputs))
             ]
 
             # Calculate metrics
             for source, target, pred in zip(source_texts, target_texts, pred_texts):
                 metrics = evaluate_single(pred, target)
-                parascore_metrics = parascore_evaluation_single(pred, source, target, parascore_scorer)
+                parascore_metrics = parascore_evaluation_single(
+                    pred, source, target, parascore_scorer
+                )
                 combined_metrics = {**metrics, **parascore_metrics}
-                
-                paraphrases.append({
-                    "source": source,  # Cleaned source without type tokens
-                    "target": target,
-                    "paraphrase": pred,
-                    "metrics": combined_metrics,
-                    "model": model_name,
-                    "adapter": adapter_name if adapter_name else "None",
-                    "dataset": dataset_name,
-                })
+
+                paraphrases.append(
+                    {
+                        "source": source,  # Cleaned source without type tokens
+                        "target": target,
+                        "paraphrase": pred,
+                        "metrics": combined_metrics,
+                        "model": model_name,
+                        "adapter": adapter_name if adapter_name else "None",
+                        "dataset": dataset_name,
+                    }
+                )
 
     return paraphrases
 
+
 def parascore_evaluation_single(paraphrase, source, reference, parascore_scorer):
     """Evaluate generated paraphrase using Parascore."""
-    free_scores = parascore_scorer.free_score(cands=[paraphrase], sources=[source], batch_size=1)
-    base_scores = parascore_scorer.base_score(cands=[paraphrase], sources=[source], refs=[reference], batch_size=1)
+    free_scores = parascore_scorer.free_score(
+        cands=[paraphrase], sources=[source], batch_size=1
+    )
+    base_scores = parascore_scorer.base_score(
+        cands=[paraphrase], sources=[source], refs=[reference], batch_size=1
+    )
 
     return {
         "free_score": free_scores[0].item(),
-        "base_score": base_scores[0] if isinstance(base_scores, list) else float(base_scores)
+        "base_score": (
+            base_scores[0] if isinstance(base_scores, list) else float(base_scores)
+        ),
     }
+
 
 def evaluate_single(prediction, target):
     """Evaluates a single prediction against the target reference using BLEU and ROUGE scores."""
@@ -176,7 +206,9 @@ def evaluate_single(prediction, target):
     rouge_scores = rouge_calculator.get_scores([prediction], [target], avg=False)[0]
 
     smoothie = SmoothingFunction().method1
-    bleu_score = sentence_bleu([target.split()], prediction.split(), smoothing_function=smoothie)
+    bleu_score = sentence_bleu(
+        [target.split()], prediction.split(), smoothing_function=smoothie
+    )
 
     return {
         "rouge-1": rouge_scores["rouge-1"]["f"],
@@ -185,7 +217,10 @@ def evaluate_single(prediction, target):
         "bleu": bleu_score,
     }
 
-def evaluate_on_datasets(model, tokenizer, eval_datasets, parascore_scorer, model_name, adapter_name=None):
+
+def evaluate_on_datasets(
+    model, tokenizer, eval_datasets, parascore_scorer, model_name, adapter_name=None
+):
     """
     Evaluate the model on different datasets.
 
@@ -203,7 +238,15 @@ def evaluate_on_datasets(model, tokenizer, eval_datasets, parascore_scorer, mode
     results = {}
     for dataset_name, dataset in eval_datasets.items():
         val_loader = torch.utils.data.DataLoader(dataset, batch_size=32)
-        paraphrases_with_metrics = eval_loop(val_loader, model, tokenizer, parascore_scorer, dataset_name, model_name, adapter_name)
+        paraphrases_with_metrics = eval_loop(
+            val_loader,
+            model,
+            tokenizer,
+            parascore_scorer,
+            dataset_name,
+            model_name,
+            adapter_name,
+        )
         results[dataset_name] = paraphrases_with_metrics
     return results
 
@@ -216,9 +259,10 @@ def save_paraphrases_to_json(paraphrases, output_file):
         paraphrases (list): List of dictionaries containing the generated paraphrases.
         output_file (str): Path to the output JSON file.
     """
-    with open(output_file, 'w', encoding='utf-8') as file:
+    with open(output_file, "w", encoding="utf-8") as file:
         json.dump(paraphrases, file, ensure_ascii=False, indent=4)
     print(f"Paraphrases saved to {output_file}")
+
 
 def save_metrics_to_csv(metrics, output_csv):
     """
@@ -228,9 +272,20 @@ def save_metrics_to_csv(metrics, output_csv):
         metrics (list): List of dictionaries containing evaluation metrics.
         output_csv (str): Path to the output CSV file.
     """
-    fieldnames = ["Model", "Adapter", "dataset_name", "rouge-1", "rouge-2", "rouge-l", "bleu", "free_score", "base_score"]
+    fieldnames = [
+        "Model",
+        "Adapter",
+        "dataset_name",
+        "rouge-1",
+        "rouge-2",
+        "rouge-l",
+        "bleu",
+        "free_score",
+        "base_score",
+    ]
     pd.DataFrame(metrics).to_csv(output_csv, index=False, header=fieldnames)
     print(f"Evaluation metrics saved to {output_csv}")
+
 
 def evaluate_models(models, eval_datasets, tokenizer, output_csv, output_json):
     """
@@ -242,7 +297,9 @@ def evaluate_models(models, eval_datasets, tokenizer, output_csv, output_json):
         output_csv (str): Output CSV file path.
         output_json (str): Output JSON file path.
     """
-    metrics = defaultdict(list)  # Store metrics per model, adapter, and dataset for averaging
+    metrics = defaultdict(
+        list
+    )  # Store metrics per model, adapter, and dataset for averaging
     all_paraphrases = []
 
     for model_name, adapter_dir, model_type in models:
@@ -254,27 +311,29 @@ def evaluate_models(models, eval_datasets, tokenizer, output_csv, output_json):
                 model = BartForConditionalGeneration.from_pretrained(model_name)
         else:
             model = BartForConditionalGeneration.from_pretrained(model_name)
-        
-        model.resize_token_embeddings(len(tokenizer))  # Adjust model embeddings to handle new tokens
+
+        model.resize_token_embeddings(
+            len(tokenizer)
+        )  # Adjust model embeddings to handle new tokens
         model.to("cuda" if torch.cuda.is_available() else "cpu")
-        parascore_scorer = ParaScorer(model_type=model_name, lang='en')
+        parascore_scorer = ParaScorer(model_type=model_name, lang="en")
 
         # Evaluate each dataset with the current model
         for dataset_name, dataset in eval_datasets.items():
             paraphrases_with_metrics = evaluate_on_datasets(
-                model, 
-                tokenizer, 
-                {dataset_name: dataset}, 
-                parascore_scorer, 
-                model_name, 
-                adapter_dir or 'None'
+                model,
+                tokenizer,
+                {dataset_name: dataset},
+                parascore_scorer,
+                model_name,
+                adapter_dir or "None",
             )
             all_paraphrases.extend(paraphrases_with_metrics[dataset_name])
 
             # Collect metrics for averaging
             for entry in paraphrases_with_metrics[dataset_name]:
-                metrics_key = (model_name, adapter_dir or 'None', dataset_name)
-                metrics[metrics_key].append(entry['metrics'])
+                metrics_key = (model_name, adapter_dir or "None", dataset_name)
+                metrics[metrics_key].append(entry["metrics"])
 
     # Compute averages and save CSV
     averaged_metrics = compute_averaged_metrics(metrics)
@@ -282,6 +341,7 @@ def evaluate_models(models, eval_datasets, tokenizer, output_csv, output_json):
 
     # Save paraphrases to JSON
     save_paraphrases_to_json(all_paraphrases, output_json)
+
 
 def compute_averaged_metrics(metrics):
     """
@@ -309,19 +369,33 @@ def compute_averaged_metrics(metrics):
         averaged_metrics.append(avg_metrics)
     return averaged_metrics
 
+
 def find_checkpoint_dir(adapter_dir):
     checkpoint_dir = None
     if os.path.exists(adapter_dir) and os.listdir(adapter_dir):
-        checkpoint_dirs = [f for f in os.listdir(adapter_dir) if f.startswith('checkpoint')]
+        checkpoint_dirs = [
+            f for f in os.listdir(adapter_dir) if f.startswith("checkpoint")
+        ]
         if checkpoint_dirs:
-            checkpoint_dir = os.path.join(adapter_dir, max(checkpoint_dirs, key=lambda x: os.path.getctime(os.path.join(adapter_dir, x))))
+            checkpoint_dir = os.path.join(
+                adapter_dir,
+                max(
+                    checkpoint_dirs,
+                    key=lambda x: os.path.getctime(os.path.join(adapter_dir, x)),
+                ),
+            )
             print(f"Loading from fine-tuned checkpoint: {checkpoint_dir}")
         else:
-            print("No checkpoint found in adapter directory, loading base model instead.")
+            print(
+                "No checkpoint found in adapter directory, loading base model instead."
+            )
     else:
-        print(f"Adapter directory does not exist or is empty: {adapter_dir}. Loading base model instead.")
-    
+        print(
+            f"Adapter directory does not exist or is empty: {adapter_dir}. Loading base model instead."
+        )
+
     return checkpoint_dir
+
 
 def parse_args():
     """
@@ -331,31 +405,61 @@ def parse_args():
         argparse.Namespace: The parsed command line arguments.
     """
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name", type=str, default="facebook/bart-large", help="Base model name or path.")
-    parser.add_argument("--etpc_dir", type=str, default="out/gen-models/facebook/bart-large_paraphrase-type-generation", help="ETPC adapter directory.")
-    parser.add_argument("--dpo_dir", type=str, default="out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid", help="DPO adapter directory.")
-    parser.add_argument("--ipo_dir", type=str, default="out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo", help="IPO adapter directory.")
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default="facebook/bart-large",
+        help="Base model name or path.",
+    )
+    parser.add_argument(
+        "--etpc_dir",
+        type=str,
+        default="out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        help="ETPC adapter directory.",
+    )
+    parser.add_argument(
+        "--dpo_dir",
+        type=str,
+        default="out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        help="DPO adapter directory.",
+    )
+    parser.add_argument(
+        "--ipo_dir",
+        type=str,
+        default="out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        help="IPO adapter directory.",
+    )
     return parser.parse_args()
 
 
-def main():    
+def main():
     args = parse_args()
     output_csv = f"out/gen-models/eval_{args.model_name.split('/')[-1]}.csv"
-    output_json = f"out/gen-models/generated_paraphrases_{args.model_name.split('/')[-1]}.json"
-    
-    tokenizer = AutoTokenizer.from_pretrained(args.model_name, clean_up_tokenization_spaces=False)
-    tokenizer.add_tokens([f"<type-{i}>" for i in range(1, 30)])  # Add custom type tokens
+    output_json = (
+        f"out/gen-models/generated_paraphrases_{args.model_name.split('/')[-1]}.json"
+    )
+
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.model_name, clean_up_tokenization_spaces=False
+    )
+    tokenizer.add_tokens(
+        [f"<type-{i}>" for i in range(1, 30)]
+    )  # Add custom type tokens
 
     etpc_dataset = load_dataset("jpwahle/etpc").filter(lambda x: x["etpc_label"] == 1)
     etpc_dataset = etpc_dataset["train"].train_test_split(test_size=0.2)
-    etpc_test_dataset = etpc_dataset["test"].select(range(10)) 
-    qqp_dataset = load_dataset("glue", "qqp")["validation"].filter(lambda x: x["label"] == 1).select(range(10))
+    etpc_test_dataset = etpc_dataset["test"].select(range(10))
+    qqp_dataset = (
+        load_dataset("glue", "qqp")["validation"]
+        .filter(lambda x: x["label"] == 1)
+        .select(range(10))
+    )
 
     eval_datasets = {
         "ETPC": ParaphraseTypeDataset(etpc_test_dataset, tokenizer),
         "QQP": ParaphraseDataset(qqp_dataset, tokenizer),
-        #TODO APTY
-    }  
+        # TODO APTY
+    }
 
     models = [
         (args.model_name, None, "base_model"),
@@ -365,6 +469,7 @@ def main():
     ]
 
     evaluate_models(models, eval_datasets, tokenizer, output_csv, output_json)
+
 
 if __name__ == "__main__":
     main()

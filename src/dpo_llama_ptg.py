@@ -1,16 +1,22 @@
 import argparse
 import logging
-import torch
 import os
-from datasets import load_dataset, Dataset
-from peft import PeftModel, PeftConfig, LoraConfig, TaskType, get_peft_model
-from trl import DPOTrainer, DPOConfig
-from huggingface_hub import login
 from typing import Optional, Tuple
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, PreTrainedModel, PreTrainedTokenizerBase
+
+import torch
+from datasets import Dataset, load_dataset
+from huggingface_hub import login
+from peft import LoraConfig, PeftConfig, PeftModel, TaskType, get_peft_model
+from transformers import (AutoModelForCausalLM, AutoTokenizer,
+                          BitsAndBytesConfig, PreTrainedModel,
+                          PreTrainedTokenizerBase)
+from trl import DPOConfig, DPOTrainer
 
 # Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
 
 def parse_arguments() -> argparse.Namespace:
     """
@@ -54,7 +60,6 @@ def parse_arguments() -> argparse.Namespace:
     return args
 
 
-
 def login_to_huggingface(token_path=None):
     """
     Login to the Hugging Face Hub using either the `HF_TOKEN` environment variable or a token file.
@@ -71,12 +76,14 @@ def login_to_huggingface(token_path=None):
         # If not, read the token from the file
         with open(token_path, "r") as token_file:
             hf_token = token_file.read().strip()
-    
+
     # Login to the Hugging Face Hub
     login(token=hf_token)
-    
-     
-def load_model_and_tokenizer(model_name: str, adapter_dir: Optional[str], device: torch.device) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
+
+
+def load_model_and_tokenizer(
+    model_name: str, adapter_dir: Optional[str], device: torch.device
+) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
     """
     Load a pre-trained model and tokenizer from Hugging Face Hub.
 
@@ -89,13 +96,19 @@ def load_model_and_tokenizer(model_name: str, adapter_dir: Optional[str], device
         Tuple[PreTrainedModel, PreTrainedTokenizerBase]: A tuple containing the loaded model and tokenizer.
     """
     logging.info(f"Loading model and tokenizer for {model_name}")
-    
+
     # Configure for 4-bit quantization
-    bnb_config = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16)
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16
+    )
 
     # Load model and tokenizer
-    model = AutoModelForCausalLM.from_pretrained(model_name, quantization_config=bnb_config)
-    tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B", padding_side="left", padding="longest")
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name, quantization_config=bnb_config
+    )
+    tokenizer = AutoTokenizer.from_pretrained(
+        "meta-llama/Llama-3.1-8B", padding_side="left", padding="longest"
+    )
     tokenizer.pad_token = tokenizer.eos_token
 
     # Load adapter if specified, otherwise check or add LoRA adapter
@@ -103,17 +116,21 @@ def load_model_and_tokenizer(model_name: str, adapter_dir: Optional[str], device
         logging.info(f"Loading PEFT adapter from {adapter_dir}")
         peft_config = PeftConfig.from_pretrained(adapter_dir)
         peft_config.base_model_name_or_path = model_name
-        model = PeftModel.from_pretrained(model, adapter_dir, config=peft_config, is_trainable=True)
+        model = PeftModel.from_pretrained(
+            model, adapter_dir, config=peft_config, is_trainable=True
+        )
         model.load_adapter(adapter_dir, adapter_name="reference")
     elif not hasattr(model.config, "peft_type") or model.config.peft_type is None:
-        logging.info("Adding a new LoRA adapter as no adapter_dir is provided and no merged adapter found.")
+        logging.info(
+            "Adding a new LoRA adapter as no adapter_dir is provided and no merged adapter found."
+        )
         peft_config = LoraConfig(
             task_type=TaskType.CAUSAL_LM,
-            r=8,  
-            lora_alpha=32,  
+            r=8,
+            lora_alpha=32,
             target_modules=["q_proj", "v_proj"],
             lora_dropout=0.05,
-            bias="none"
+            bias="none",
         )
         model = get_peft_model(model, peft_config)
     else:
@@ -121,7 +138,7 @@ def load_model_and_tokenizer(model_name: str, adapter_dir: Optional[str], device
 
     # If using 4-bit quantization, do not manually move the model to the device
     if not bnb_config.load_in_4bit:
-        model.to(device)    
+        model.to(device)
 
     return model, tokenizer
 
@@ -137,17 +154,20 @@ def load_datasets(train_file: str, eval_file: str) -> Tuple[Dataset, Dataset]:
     Returns:
         Tuple[Dataset, Dataset]: A tuple containing the training and validation datasets.
     """
-    
+
     # Load the datasets from JSON files
-    train_dataset = load_dataset('json', data_files={'train': train_file})['train']
-    validation_dataset = load_dataset('json', data_files={'validation': eval_file})['validation']
-    
+    train_dataset = load_dataset("json", data_files={"train": train_file})["train"]
+    validation_dataset = load_dataset("json", data_files={"validation": eval_file})[
+        "validation"
+    ]
+
     # Return the datasets as a tuple
     return train_dataset, validation_dataset
 
 
-
-def setup_dpo_trainer(model, tokenizer, train_dataset, eval_dataset, output_dir, loss_type):
+def setup_dpo_trainer(
+    model, tokenizer, train_dataset, eval_dataset, output_dir, loss_type
+):
     """
     Set up the DPO trainer with the given model, tokenizer, training dataset, evaluation dataset, output directory, and loss type.
 
@@ -184,7 +204,7 @@ def setup_dpo_trainer(model, tokenizer, train_dataset, eval_dataset, output_dir,
         tokenizer=tokenizer,
     )
 
-    
+
 def main() -> None:
     """Main function to run the DPO training process.
 
@@ -194,7 +214,7 @@ def main() -> None:
     args = parse_arguments()
 
     # Create the output directory if it does not exist
-    sanitized_model_name = args.model_name.replace('/', '-')
+    sanitized_model_name = args.model_name.replace("/", "-")
     output_dir = f"./out/gen-models/dpo_{sanitized_model_name}_{args.loss_type}"
     os.makedirs(output_dir, exist_ok=True)
 
@@ -202,7 +222,7 @@ def main() -> None:
     login_to_huggingface()
 
     # Setup device
-    if torch.cuda.is_available():        
+    if torch.cuda.is_available():
         device = torch.device("cuda")
         logging.info(f"Using device: {torch.cuda.get_device_name(0)}")
     else:
@@ -210,7 +230,9 @@ def main() -> None:
         logging.info(f"Using device: {device}")
 
     # Load model and tokenizer
-    model, tokenizer = load_model_and_tokenizer(args.model_name, args.adapter_dir, device)
+    model, tokenizer = load_model_and_tokenizer(
+        args.model_name, args.adapter_dir, device
+    )
     torch.cuda.empty_cache()
 
     # Load datasets
@@ -220,7 +242,9 @@ def main() -> None:
     torch.cuda.empty_cache()
 
     # Setup DPO trainer
-    trainer = setup_dpo_trainer(model, tokenizer, train_dataset, eval_dataset, output_dir, args.loss_type)
+    trainer = setup_dpo_trainer(
+        model, tokenizer, train_dataset, eval_dataset, output_dir, args.loss_type
+    )
 
     # Train the model
     logging.info("Starting DPO training...")

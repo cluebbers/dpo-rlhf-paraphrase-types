@@ -1,16 +1,23 @@
-import torch
 import json
+from typing import Dict, List, Tuple
+
 import numpy as np
 import pandas as pd
-from typing import List, Tuple, Dict
+import torch
 from sklearn.metrics import f1_score
-from transformers import AutoTokenizer, AutoModelForSequenceClassification
-
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 TOP_10_PARAPHRASE_TYPES = [
-    "addition/deletion", "change of order", "derivational changes", "inflectional changes",
-    "punctuation changes", "same polarity substitution (contextual)", "semantic based",
-    "spelling changes", "subordination and nesting changes", "synthetic/analytic substitution"
+    "addition/deletion",
+    "change of order",
+    "derivational changes",
+    "inflectional changes",
+    "punctuation changes",
+    "same polarity substitution (contextual)",
+    "semantic based",
+    "spelling changes",
+    "subordination and nesting changes",
+    "synthetic/analytic substitution",
 ]
 
 
@@ -19,25 +26,35 @@ class ParaphraseTypeEvaluator:
         self.model_name = model_name
         self.top_k = top_k
         self.model = AutoModelForSequenceClassification.from_pretrained(model_name)
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, clean_up_tokenization_spaces=True)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_name, clean_up_tokenization_spaces=True
+        )
         self.model.eval()
-        self.normalized_top_10_types = [ptype.strip().lower() for ptype in TOP_10_PARAPHRASE_TYPES]
+        self.normalized_top_10_types = [
+            ptype.strip().lower() for ptype in TOP_10_PARAPHRASE_TYPES
+        ]
 
     def preprocess_apt(self, apt: str) -> List[str]:
         apt_types = apt.lower().split(", ")
         filtered_types = [
-            ptype.strip() for ptype in apt_types if ptype.strip() in self.normalized_top_10_types
+            ptype.strip()
+            for ptype in apt_types
+            if ptype.strip() in self.normalized_top_10_types
         ]
         return filtered_types
 
     def predict_paraphrase_types(self, reference: str, paraphrase: str) -> List[str]:
-        inputs = self.tokenizer(reference, paraphrase, truncation=True, max_length=256, return_tensors="pt")
+        inputs = self.tokenizer(
+            reference, paraphrase, truncation=True, max_length=256, return_tensors="pt"
+        )
         with torch.no_grad():
             logits = self.model(**inputs).logits
         probs = torch.sigmoid(logits).squeeze().cpu().numpy()
-        
-        top_k_indices = np.argsort(probs)[-self.top_k:][::-1]  # Descending order
-        predicted_types = [TOP_10_PARAPHRASE_TYPES[idx] for idx in top_k_indices if probs[idx] > 0.5]
+
+        top_k_indices = np.argsort(probs)[-self.top_k :][::-1]  # Descending order
+        predicted_types = [
+            TOP_10_PARAPHRASE_TYPES[idx] for idx in top_k_indices if probs[idx] > 0.5
+        ]
         return predicted_types
 
     def extract_first_paraphrase(self, paraphrase: str) -> str:
@@ -48,11 +65,13 @@ class ParaphraseTypeEvaluator:
             return parts[0].strip()
         return paraphrase.strip()
 
-    def evaluate_and_update_json(self, json_file_path: str, output_file_path: str) -> Dict[Tuple[str, str], float]:
+    def evaluate_and_update_json(
+        self, json_file_path: str, output_file_path: str
+    ) -> Dict[Tuple[str, str], float]:
         # Load data from JSON file
-        with open(json_file_path, 'r', encoding='utf-8') as file:
+        with open(json_file_path, "r", encoding="utf-8") as file:
             data = json.load(file)
-        
+
         # Dictionary to store scores by model and dataset
         model_dataset_scores = {}
         modified_data = []  # New list to store the modified entries
@@ -61,30 +80,44 @@ class ParaphraseTypeEvaluator:
             # Define the "data" structure with "Original" instead of "original"
             task_data = {
                 "id": entry["id"],
-                "Original": entry["original"],  # Capital "O" for consistency with Label Studio expectation
+                "Original": entry[
+                    "original"
+                ],  # Capital "O" for consistency with Label Studio expectation
                 "APT": entry.get("APT"),
                 "reference": entry.get("reference"),
                 "dataset": entry.get("dataset"),
-                "annotator": entry.get("annotator", 0),  # Default to 0 if annotator is not provided
-                "List": []
+                "annotator": entry.get(
+                    "annotator", 0
+                ),  # Default to 0 if annotator is not provided
+                "List": [],
             }
-            
+
             # Set reference and true types
             reference = entry["reference"] if entry["reference"] else entry["original"]
             true_types = self.preprocess_apt(entry["APT"])
             dataset_name = entry.get("dataset", "Unknown")
-            
+
             paraphrase_id = 0
-            
+
             for paraphrase_entry in entry["List"]:
                 # Process each paraphrase and calculate scores
                 original_paraphrase = paraphrase_entry["paraphrase"]
                 paraphrase = self.extract_first_paraphrase(original_paraphrase)
                 model_name = paraphrase_entry["model"]
-                true_labels = [1 if ptype in true_types else 0 for ptype in TOP_10_PARAPHRASE_TYPES]
+                true_labels = [
+                    1 if ptype in true_types else 0 for ptype in TOP_10_PARAPHRASE_TYPES
+                ]
                 predicted_types = self.predict_paraphrase_types(reference, paraphrase)
-                pred_labels = [1 if ptype in predicted_types else 0 for ptype in TOP_10_PARAPHRASE_TYPES]
-                f1 = round(f1_score(true_labels, pred_labels, average="macro", zero_division=0), 4)
+                pred_labels = [
+                    1 if ptype in predicted_types else 0
+                    for ptype in TOP_10_PARAPHRASE_TYPES
+                ]
+                f1 = round(
+                    f1_score(
+                        true_labels, pred_labels, average="macro", zero_division=0
+                    ),
+                    4,
+                )
 
                 # Create an entry for List with title and body structure
                 list_entry = {
@@ -99,7 +132,7 @@ class ParaphraseTypeEvaluator:
 
                 # Append the structured list entry
                 task_data["List"].append(list_entry)
-                
+
                 paraphrase_id += 1
 
                 # Track F1 scores by model and dataset
@@ -112,31 +145,40 @@ class ParaphraseTypeEvaluator:
             modified_data.append({"data": task_data})
 
         # Save the modified data to output JSON file
-        with open(output_file_path, 'w', encoding='utf-8') as outfile:
+        with open(output_file_path, "w", encoding="utf-8") as outfile:
             json.dump(modified_data, outfile, indent=4, ensure_ascii=False)
-        
+
         # Calculate average F1 score for each model-dataset pair
-        avg_model_scores = {key: np.mean(scores) for key, scores in model_dataset_scores.items()}
-        print(f"Updated JSON with newmetric-F1 and newmetric-apt saved to {output_file_path}")
+        avg_model_scores = {
+            key: np.mean(scores) for key, scores in model_dataset_scores.items()
+        }
+        print(
+            f"Updated JSON with newmetric-F1 and newmetric-apt saved to {output_file_path}"
+        )
         return avg_model_scores
 
-
-
-    def update_csv_with_f1(self, csv_file_path: str, output_csv_path: str, avg_model_scores: Dict[Tuple[str, str], float]) -> None:
+    def update_csv_with_f1(
+        self,
+        csv_file_path: str,
+        output_csv_path: str,
+        avg_model_scores: Dict[Tuple[str, str], float],
+    ) -> None:
         df = pd.read_csv(csv_file_path)
-        
+
         # Debugging: Print out the keys of avg_model_scores to verify what keys are present
         print("Available avg_model_scores keys:", list(avg_model_scores.keys()))
 
         # Extract the adapter name (e.g., "base_model", "etpc_model") for matching
-        df['Adapter'] = df['Adapter'].str.strip()  # Ensure no leading/trailing spaces
-        
+        df["Adapter"] = df["Adapter"].str.strip()  # Ensure no leading/trailing spaces
+
         # Add new columns for F1 scores for each dataset
         df["newmetric-F1-APTY"] = df.apply(
-            lambda row: round(avg_model_scores.get((row["Adapter"], "APTY"), None),4), axis=1
+            lambda row: round(avg_model_scores.get((row["Adapter"], "APTY"), None), 4),
+            axis=1,
         )
         df["newmetric-F1-ETPC"] = df.apply(
-            lambda row: round(avg_model_scores.get((row["Adapter"], "ETPC"), None),4), axis=1
+            lambda row: round(avg_model_scores.get((row["Adapter"], "ETPC"), None), 4),
+            axis=1,
         )
 
         # Debugging: Print out the DataFrame head to verify the updates
@@ -144,17 +186,21 @@ class ParaphraseTypeEvaluator:
 
         # Save the updated DataFrame to a new CSV file
         df.to_csv(output_csv_path, index=False)
-        print(f"Updated CSV with newmetric-F1-APTY and newmetric-F1-ETPC saved to {output_csv_path}")
+        print(
+            f"Updated CSV with newmetric-F1-APTY and newmetric-F1-ETPC saved to {output_csv_path}"
+        )
+
 
 # Example usage:
-evaluator = ParaphraseTypeEvaluator(model_name="out/cls-models/deberta-base_qqp_pd_etpc_ptd")
+evaluator = ParaphraseTypeEvaluator(
+    model_name="out/cls-models/deberta-base_qqp_pd_etpc_ptd"
+)
 avg_model_scores = evaluator.evaluate_and_update_json(
     json_file_path="out/gen-models/generated_paraphrases_Llama-3.1-8B.json",
-    output_file_path="out/gen-models/generated_paraphrases_Llama-3.1-8B_F1.json"
+    output_file_path="out/gen-models/generated_paraphrases_Llama-3.1-8B_F1.json",
 )
 evaluator.update_csv_with_f1(
     csv_file_path="out/gen-models/eval_Llama-3.1-8B.csv",
     output_csv_path="out/gen-models/eval_Llama-3.1-8B_F1.csv",
-    avg_model_scores=avg_model_scores
-    
+    avg_model_scores=avg_model_scores,
 )

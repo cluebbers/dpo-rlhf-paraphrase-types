@@ -5,14 +5,10 @@ from datasets import load_dataset
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
 from rouge import Rouge
 from tqdm import tqdm
-from transformers import (
-    AutoTokenizer,
-    BartForConditionalGeneration,
-    PegasusForConditionalGeneration,
-    Trainer,
-    TrainingArguments,
-    DataCollatorForSeq2Seq
-)
+from transformers import (AutoTokenizer, BartForConditionalGeneration,
+                          DataCollatorForSeq2Seq,
+                          PegasusForConditionalGeneration, Trainer,
+                          TrainingArguments)
 
 
 def encode_data(original, target, tokenizer):
@@ -331,7 +327,7 @@ def eval_loop(data_loader, model, tokenizer):
 
 def main():
     args = parse_args()
-    
+
     # Check if CUDA is available
     if args.device == "cuda" and not torch.cuda.is_available():
         print("CUDA not available. Switching to CPU.")
@@ -339,14 +335,14 @@ def main():
     print(f"Using device: {args.device}")
 
     torch.cuda.empty_cache()  # Clear GPU cache before starting
-    
+
     tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large")
     model = (
         BartForConditionalGeneration.from_pretrained(args.model_name)
         if "bart" in args.model_name
         else PegasusForConditionalGeneration.from_pretrained(args.model_name)
     )
-    
+
     model = model.to(args.device)
 
     if args.task_name == "paraphrase-type-generation":
@@ -361,7 +357,7 @@ def main():
         dataset = load_dataset("glue", "qqp")
         train_dataset = ParaphraseDataset(dataset["train"], tokenizer)
         eval_dataset = ParaphraseDataset(dataset["validation"], tokenizer)
-   
+
     # Fine-tuning
     training_args = TrainingArguments(
         per_device_train_batch_size=4,
@@ -388,7 +384,9 @@ def main():
     )
     trainer.train()
 
-    val_loader = torch.utils.data.DataLoader(eval_dataset, batch_size=8, pin_memory=True, num_workers=4)
+    val_loader = torch.utils.data.DataLoader(
+        eval_dataset, batch_size=8, pin_memory=True, num_workers=4
+    )
     metrics = eval_loop(val_loader, model, tokenizer)
 
     # Evaluation
