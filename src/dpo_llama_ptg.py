@@ -224,7 +224,7 @@ def main() -> None:
     trainer.save_model(output_dir)
     logging.info(f"Model saved to {output_dir}")
 
-    model.push_to_hub(f"Llama-3.1-8B-PTG-{args.loss_type}")
+    model.push_to_hub(f"{sanitized_model_name}_{args.loss_type}")
 
 
 if __name__ == "__main__":
