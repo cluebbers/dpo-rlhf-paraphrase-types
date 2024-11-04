@@ -116,6 +116,14 @@ def main():
     reward_model_name = "out/cls-models/reward_llama-3.1-8b-etpc/checkpoint-17"
 
     login_to_huggingface("token_file.txt")
+    
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        num_gpus = torch.cuda.device_count()
+        logging.info(f"Using {num_gpus} GPUs: {[torch.cuda.get_device_name(i) for i in range(num_gpus)]}")
+    else:
+        device = torch.device("cpu")
+        logging.info(f"Using device: {device}")
 
     tokenizer = AutoTokenizer.from_pretrained(
         "meta-llama/Llama-3.1-8B",
@@ -152,10 +160,10 @@ def main():
 
     policy.resize_token_embeddings(len(tokenizer))
     policy.config.pad_token_id = tokenizer.pad_token_id or policy.config.eos_token_id
-
+    
     ref_policy = AutoModelForCausalLM.from_pretrained(policy_name)
     reward_model = AutoModelForSequenceClassification.from_pretrained(reward_model_name)
-
+    
     torch.cuda.empty_cache()
 
     # Read sentences by type from the APTY dataset
@@ -187,6 +195,10 @@ def main():
     torch.cuda.empty_cache()
 
     trainer.train()
+    
+    trainer.save_model("out/gen-models/ppo_model")	
+    
+    trainer.push_to_hub("Llama-3.1-8B-PTG-PPO")
 
 
 if __name__ == "__main__":
