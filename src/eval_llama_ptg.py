@@ -100,11 +100,10 @@ def create_etpc_prompts(data: List[Dict[str, Any]]) -> Tuple[List[str], List[str
 
         # Construct the prompt
         prompt = (
-            "<|start_header_id|>user<|end_header_id|>"
             "Given the following sentence, generate a paraphrase with the following types. "
             f"Sentence: {instance['sentence1']} "
-            f"Paraphrase Types: {', '.join(instance['paraphrase_types'])}."
-            "<|start_header_id|>assistant<|end_header_id|>Generated Paraphrase: "
+            f"Paraphrase Types: {', '.join(instance['paraphrase_types'])}. "
+            "Generated Paraphrase: "
         )
         prompts.append(prompt)
         # Add the reference paraphrase
@@ -688,10 +687,9 @@ def main() -> None:
             **tokenize_data(
                 tokenizer,
                 [
-                    f"<|start_header_id|>user<|end_header_id|>"
                     "Instruction: Given the following sentence, generate a paraphrase with the following type. "
                     f"Sentence: {sentence} Paraphrase Type: {paraphrase_type}. "
-                    "<|start_header_id|>assistant<|end_header_id|>Generated Paraphrase: "
+                    "Generated Paraphrase: "
                     for sentence in sentences
                 ],
             ),
