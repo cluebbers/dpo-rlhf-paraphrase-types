@@ -143,10 +143,10 @@ def write_to_jsonl(data, filename):
             # Construct generation entry
             generation_entry = {
                 "prompt": (
-                    "Given the following sentence, generate a paraphrase with the following type. "
+                    "Instruction: Given the following sentence, generate a paraphrase with the following type. "
                     f"Sentence: {instance['original']} "
                     f"Paraphrase Type: {instance['APT']}. "
-                    "Generated Paraphrase: "
+                    "Answer: "
                 ),
                 "chosen": f"{instance['chosen']}",
                 "rejected": f"{instance['rejected']}",
