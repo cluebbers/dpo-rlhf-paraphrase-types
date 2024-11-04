@@ -191,10 +191,11 @@ def setup_dpo_trainer(
     # Set up the training arguments
     training_args = DPOConfig(
         eval_strategy="epoch",  # Evaluate the model at the end of each epoch
-        per_device_train_batch_size=4,  # Number of samples per batch on each device
+        per_device_train_batch_size=1,  # Number of samples per batch on each device
         gradient_accumulation_steps=4,  # Number of batches to accumulate gradients for
         output_dir=output_dir,  # Directory to save the model to
-        max_prompt_length=512,
+        max_prompt_length=350,
+        max_length=512,
         fp16=True,
         remove_unused_columns=False,
         loss_type=loss_type,  # The type of loss to use
@@ -249,7 +250,6 @@ def main() -> None:
         model, tokenizer, train_dataset, eval_dataset, output_dir, args.loss_type
     )
 
-
     torch.cuda.empty_cache()
     trainer.train()
     
@@ -258,8 +258,7 @@ def main() -> None:
     trainer.save_model(output_dir)
     logging.info(f"Model saved to {output_dir}")
     
-    #TODO change name for hub
-    # model.push_to_hub(f"Llama-3.1-8B-PTG-")
+    model.push_to_hub(f"Llama-3.1-8B-PTG-{args.loss_type}")
 
 
 if __name__ == "__main__":
