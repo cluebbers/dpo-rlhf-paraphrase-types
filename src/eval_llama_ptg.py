@@ -51,19 +51,19 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--etpc_dir",
         type=str,
-        default="out/gen-models/llama-3.1-8b-etpc",
+        default="cluebbers/llama-3.1-8b-etpc",
         help="ETPC adapter directory.",
     )
     parser.add_argument(
         "--dpo_dir",
         type=str,
-        default="out/gen-models/dpo_out-gen-models-llama-3.1-8b-etpc_sigmoid",
+        default="cluebbers/Llama-3.1-8B-PTG-sigmoid",
         help="DPO adapter directory.",
     )
     parser.add_argument(
         "--ipo_dir",
         type=str,
-        default="out/gen-models/dpo_out-gen-models-llama-3.1-8b-etpc_ipo",
+        default="cluebbers/Llama-3.1-8B-PTG-ipo",
         help="DPO adapter directory.",
     )
 

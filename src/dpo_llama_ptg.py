@@ -44,7 +44,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--adapter_dir",
         type=str,
-        default="out/gen-models/llama-3.1-8b-etpc",
+        default="cluebbers/llama-3.1-8b-etpc",
         help="Name of the PEFT adapter",
     )
     parser.add_argument(
