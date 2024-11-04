@@ -4,9 +4,9 @@ import os
 from typing import Optional, Tuple
 
 import torch
-from datasets import Dataset, load_dataset
+from datasets import load_dataset
 from huggingface_hub import login
-from peft import LoraConfig, PeftConfig, PeftModel, TaskType, get_peft_model
+from peft import AutoPeftModelForCausalLM
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -38,13 +38,13 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--model_name",
         type=str,
-        default="out/gen-models/llama-3.1-8b-etpc",
+        default="meta-llama/Llama-3.1-8B",
         help="Path to the model",
     )
     parser.add_argument(
         "--adapter_dir",
         type=str,
-        default=None,
+        default="out/gen-models/llama-3.1-8b-etpc",
         help="Name of the PEFT adapter",
     )
     parser.add_argument(
@@ -104,71 +104,30 @@ def load_model_and_tokenizer(
         load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16
     )
 
-    # Load model and tokenizer
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name, quantization_config=bnb_config
-    )
     tokenizer = AutoTokenizer.from_pretrained(
-        "meta-llama/Llama-3.1-8B", 
-        padding_side="left", 
-        padding=True, 
-        truncation=True
+        "meta-llama/Llama-3.1-8B", padding_side="left", padding=True, truncation=True
     )
+
     tokenizer.add_special_tokens({"pad_token": "<|finetune_right_pad_id|>"})
     tokenizer.pad_token = "<|finetune_right_pad_id|>"
 
     # Load adapter if specified, otherwise check or add LoRA adapter
     if adapter_dir:
         logging.info(f"Loading PEFT adapter from {adapter_dir}")
-        peft_config = PeftConfig.from_pretrained(adapter_dir)
-        peft_config.base_model_name_or_path = model_name
-        model = PeftModel.from_pretrained(
-            model, adapter_dir, config=peft_config, is_trainable=True
+        model = AutoPeftModelForCausalLM.from_pretrained(
+            adapter_dir,
+            quantization_config=bnb_config,
+            is_trainable=True,
         )
         model.load_adapter(adapter_dir, adapter_name="reference")
-    elif not hasattr(model.config, "peft_type") or model.config.peft_type is None:
-        logging.info(
-            "Adding a new LoRA adapter as no adapter_dir is provided and no merged adapter found."
-        )
-        peft_config = LoraConfig(
-            task_type=TaskType.CAUSAL_LM,
-            r=8,
-            lora_alpha=32,
-            target_modules=["q_proj", "v_proj"],
-            lora_dropout=0.05,
-            bias="none",
-        )
-        model = get_peft_model(model, peft_config)
     else:
-        logging.info("Model is already merged with the adapter configuration.")
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name, quantization_config=bnb_config
+        )
 
-    # If using 4-bit quantization, do not manually move the model to the device
-    if not bnb_config.load_in_4bit:
-        model.to(device)
+    model = model.to(device)
 
     return model, tokenizer
-
-
-def load_datasets(train_file: str, eval_file: str) -> Tuple[Dataset, Dataset]:
-    """
-    Load training and validation datasets from JSON files.
-
-    Args:
-        train_file (str): Path to the training dataset JSON file.
-        eval_file (str): Path to the validation dataset JSON file.
-
-    Returns:
-        Tuple[Dataset, Dataset]: A tuple containing the training and validation datasets.
-    """
-
-    # Load the datasets from JSON files
-    train_dataset = load_dataset("json", data_files={"train": train_file})["train"]
-    validation_dataset = load_dataset("json", data_files={"validation": eval_file})[
-        "validation"
-    ]
-
-    # Return the datasets as a tuple
-    return train_dataset, validation_dataset
 
 
 def setup_dpo_trainer(
@@ -201,7 +160,7 @@ def setup_dpo_trainer(
         loss_type=loss_type,  # The type of loss to use
         save_strategy="epoch",
         load_best_model_at_end=True,
-        num_train_epochs=3,
+        num_train_epochs=5,
         save_total_limit=1,
         weight_decay=0.01,
     )
@@ -232,7 +191,9 @@ def main() -> None:
     if torch.cuda.is_available():
         device = torch.device("cuda")
         num_gpus = torch.cuda.device_count()
-        logging.info(f"Using {num_gpus} GPUs: {[torch.cuda.get_device_name(i) for i in range(num_gpus)]}")
+        logging.info(
+            f"Using {num_gpus} GPUs: {[torch.cuda.get_device_name(i) for i in range(num_gpus)]}"
+        )
     else:
         device = torch.device("cpu")
         logging.info(f"Using device: {device}")
@@ -244,7 +205,11 @@ def main() -> None:
 
     train_json_path = "out/generation_apty_ranked_train.jsonl"
     eval_json_path = "out/generation_apty_ranked_test.jsonl"
-    train_dataset, eval_dataset = load_datasets(train_json_path, eval_json_path)
+    train_dataset = load_dataset("json", data_files={"train": train_json_path})["train"]
+    eval_dataset = load_dataset("json", data_files={"validation": eval_json_path})[
+        "validation"
+    ]
+
     torch.cuda.empty_cache()
 
     trainer = setup_dpo_trainer(
@@ -253,12 +218,12 @@ def main() -> None:
 
     torch.cuda.empty_cache()
     trainer.train()
-    
+
     torch.cuda.empty_cache()
 
     trainer.save_model(output_dir)
     logging.info(f"Model saved to {output_dir}")
-    
+
     model.push_to_hub(f"Llama-3.1-8B-PTG-{args.loss_type}")
 
 
