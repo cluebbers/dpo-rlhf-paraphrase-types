@@ -334,6 +334,8 @@ def save_paraphrases_to_json(
         # The ensure_ascii=False argument ensures that non-ASCII characters are preserved
         # The indent=4 argument formats the JSON output with indentation
         json.dump(paraphrases_list, output_file, ensure_ascii=False, indent=4)
+    
+    logging.info(f"Generated paraphrases saved to {output_file_path}")
 
 
 def evaluate_individual_paraphrases(
@@ -544,6 +546,7 @@ def generate_and_evaluate(
                     low_cpu_mem_usage=True,
                     attn_implementation="flash_attention_2",
                 )
+                model.to('cuda')
             else:
                 logging.info(
                     f"Loading base model and adding adapter {model_suffix} from {adapter_dir}"
@@ -566,7 +569,7 @@ def generate_and_evaluate(
                 low_cpu_mem_usage=True,
                 attn_implementation="flash_attention_2",
             )
-
+       
         # Resize the model's embeddings to handle new tokens
         model.resize_token_embeddings(len(tokenizer))
         model.config.pad_token_id = tokenizer.pad_token_id or model.config.eos_token_id
