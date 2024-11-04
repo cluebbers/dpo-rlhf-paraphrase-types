@@ -109,9 +109,13 @@ def load_model_and_tokenizer(
         model_name, quantization_config=bnb_config
     )
     tokenizer = AutoTokenizer.from_pretrained(
-        "meta-llama/Llama-3.1-8B", padding_side="left", padding=True, truncation=True
+        "meta-llama/Llama-3.1-8B", 
+        padding_side="left", 
+        padding=True, 
+        truncation=True
     )
-    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.add_special_tokens({"pad_token": "<|finetune_right_pad_id|>"})
+    tokenizer.pad_token = "<|finetune_right_pad_id|>"
 
     # Load adapter if specified, otherwise check or add LoRA adapter
     if adapter_dir:
@@ -225,7 +229,8 @@ def main() -> None:
 
     if torch.cuda.is_available():
         device = torch.device("cuda")
-        logging.info(f"Using device: {torch.cuda.get_device_name(0)}")
+        num_gpus = torch.cuda.device_count()
+        logging.info(f"Using {num_gpus} GPUs: {[torch.cuda.get_device_name(i) for i in range(num_gpus)]}")
     else:
         device = torch.device("cpu")
         logging.info(f"Using device: {device}")
@@ -244,13 +249,17 @@ def main() -> None:
         model, tokenizer, train_dataset, eval_dataset, output_dir, args.loss_type
     )
 
-    logging.info("Starting DPO training...")
+
     torch.cuda.empty_cache()
     trainer.train()
+    
     torch.cuda.empty_cache()
 
     trainer.save_model(output_dir)
     logging.info(f"Model saved to {output_dir}")
+    
+    #TODO change name for hub
+    # model.push_to_hub(f"Llama-3.1-8B-PTG-")
 
 
 if __name__ == "__main__":

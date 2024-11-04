@@ -100,10 +100,11 @@ def create_etpc_prompts(data: List[Dict[str, Any]]) -> Tuple[List[str], List[str
 
         # Construct the prompt
         prompt = (
-            "Given the following sentence, generate a"
-            " paraphrase with the following types. Sentence:"
-            f" {instance['sentence1']} Paraphrase Types:"
-            f" {', '.join(instance['paraphrase_types'])}. Generated Paraphrase: "
+            "<|start_header_id|>user<|end_header_id|>"
+            "Given the following sentence, generate a paraphrase with the following types. "
+            f"Sentence: {instance['sentence1']} "
+            f"Paraphrase Types: {', '.join(instance['paraphrase_types'])}."
+            "<|start_header_id|>assistant<|end_header_id|>Generated Paraphrase: "
         )
         prompts.append(prompt)
         # Add the reference paraphrase
@@ -188,13 +189,12 @@ def load_tokenizer(model_name: str) -> PreTrainedTokenizerBase:
     # Load the tokenizer with specific settings
     tokenizer: PreTrainedTokenizerBase = AutoTokenizer.from_pretrained(
         model_name,
-        padding_side="left",  # Set padding side to left
-        use_fast=True,  # Use fast tokenizer implementation
+        padding_side="left",  
+        use_fast=True,  
     )
 
-    # Add a pad token if it does not exist
-    if tokenizer.pad_token is None:
-        tokenizer.add_special_tokens({"pad_token": "<pad>"})
+    tokenizer.add_special_tokens({"pad_token": "<|finetune_right_pad_id|>"})
+    tokenizer.pad_token = "<|finetune_right_pad_id|>"
 
     return tokenizer
 
@@ -276,6 +276,7 @@ def generate_paraphrases(
                 temperature=temperature,
                 do_sample=True,
                 pad_token_id=tokenizer.pad_token_id,
+                eos_token_id=tokenizer.eos_token_id,
             )
 
         # Decode the generated outputs into text and clean up special tokens
@@ -684,8 +685,10 @@ def main() -> None:
             **tokenize_data(
                 tokenizer,
                 [
-                    f"Instruction: Given the following sentence, generate a paraphrase with the following type. "
-                    f"Sentence: {sentence} Paraphrase Type: {paraphrase_type}. Generated Paraphrase: "
+                    f"<|start_header_id|>user<|end_header_id|>"
+                    "Instruction: Given the following sentence, generate a paraphrase with the following type. "
+                    f"Sentence: {sentence} Paraphrase Type: {paraphrase_type}. "
+                    "<|start_header_id|>assistant<|end_header_id|>Generated Paraphrase: "
                     for sentence in sentences
                 ],
             ),
