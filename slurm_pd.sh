@@ -5,8 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=32G  # for microsoft/deberta-v3-large
-#SBATCH --gpus=V100:1
+#SBATCH --gpus=RTX5000:1
 #SBATCH --time=24:00:00
 #SBATCH --mail-type=all              
 #SBATCH --mail-user=c.luebbers@stud.uni-goettingen.de 
@@ -38,6 +37,7 @@ python3 src/finetune_pd.py --model_name $1
 
 # done
 # sbatch slurm_pd.sh microsoft/deberta-base
+# sbatch slurm_pd.sh microsoft/deberta-v3-large
 
 #TODO
-# sbatch slurm_pd.sh microsoft/deberta-v3-large
+# sbatch slurm_pd.sh meta-llama/Llama-3.1-8B

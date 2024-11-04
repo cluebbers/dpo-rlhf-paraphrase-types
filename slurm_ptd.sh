@@ -6,7 +6,7 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --gpus=RTX5000:1
-#SBATCH --time=48:00:00
+#SBATCH --time=12:00:00
 #SBATCH --mail-type=all
 #SBATCH --mail-user=c.luebbers@stud.uni-goettingen.de 
 #SBATCH --output=./slurm_files/slurm-%x-%j.out
@@ -36,7 +36,8 @@ echo $PATH
 python3 src/finetune_ptd.py --model_name $1 
 
 # Done
+# sbatch slurm_ptd.sh /scratch1/users/u12246/out/cls-models/deberta-base_qqp_pd/
 
 #TODO
-# sbatch slurm_ptd.sh /scratch1/users/u12246/out/cls-models/deberta-base_qqp_pd/checkpoint-56855
-# sbatch slurm_ptd.sh /scratch1/users/u12246/out/cls-models/deberta-v3-large_qqp_pd/checkpoint-56855
+# sbatch slurm_ptd.sh /scratch1/users/u12246/out/cls-models/deberta-v3-large_qqp_pd/
+# sbatch slurm_ptd.sh /scratch1/users/u12246/out/cls-models/llama-3.1-8b_qqp_pd/
