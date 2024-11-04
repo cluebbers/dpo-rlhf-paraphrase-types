@@ -201,8 +201,9 @@ def setup_dpo_trainer(
         loss_type=loss_type,  # The type of loss to use
         save_strategy="epoch",
         load_best_model_at_end=True,
-        num_train_epochs=10,
+        num_train_epochs=3,
         save_total_limit=1,
+        weight_decay=0.01,
     )
 
     # Set up the DPO trainer
