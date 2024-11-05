@@ -44,7 +44,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--adapter_dir",
         type=str,
-        default="cluebbers/llama-3.1-8b-etpc",
+        default="cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc",
         help="Name of the PEFT adapter",
     )
     parser.add_argument(
@@ -105,25 +105,18 @@ def load_model_and_tokenizer(
     )
 
     tokenizer = AutoTokenizer.from_pretrained(
-        "meta-llama/Llama-3.1-8B", padding_side="left", padding=True, truncation=True
+        model_name, padding_side="left", padding=True, truncation=True
     )
 
-    tokenizer.add_special_tokens({"pad_token": "<|finetune_right_pad_id|>"})
     tokenizer.pad_token = "<|finetune_right_pad_id|>"
 
-    # Load adapter if specified, otherwise check or add LoRA adapter
-    if adapter_dir:
-        logging.info(f"Loading PEFT adapter from {adapter_dir}")
-        model = AutoPeftModelForCausalLM.from_pretrained(
-            adapter_dir,
-            quantization_config=bnb_config,
-            is_trainable=True,
-        )
-        model.load_adapter(adapter_dir, adapter_name="reference")
-    else:
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name, quantization_config=bnb_config
-        )
+    logging.info(f"Loading PEFT adapter from {adapter_dir}")
+    model = AutoPeftModelForCausalLM.from_pretrained(
+        adapter_dir,
+        quantization_config=bnb_config,
+        is_trainable=True,
+    )
+    model.load_adapter(adapter_dir, adapter_name="reference")
 
     model = model.to(device)
 
@@ -160,9 +153,11 @@ def setup_dpo_trainer(
         loss_type=loss_type,  # The type of loss to use
         save_strategy="epoch",
         load_best_model_at_end=True,
-        num_train_epochs=5,
+        num_train_epochs=3,
         save_total_limit=1,
         weight_decay=0.01,
+        model_adapter_name="default",
+        ref_adapter_name="reference",
     )
 
     # Set up the DPO trainer
@@ -182,8 +177,8 @@ def main() -> None:
     """
     args = parse_arguments()
 
-    sanitized_model_name = args.model_name.replace("/", "-")
-    output_dir = f"./out/gen-models/dpo_{sanitized_model_name}_{args.loss_type}"
+    sanitized_model_name = args.model_name.split("/")[-1]
+    output_dir = f"./out/gen-models/{sanitized_model_name}-paraphrase-type-generation-apty-{args.loss_type}"
     os.makedirs(output_dir, exist_ok=True)
 
     login_to_huggingface("token_file.txt")
@@ -221,10 +216,11 @@ def main() -> None:
 
     torch.cuda.empty_cache()
 
-    trainer.save_model(output_dir)
-    logging.info(f"Model saved to {output_dir}")
+    model.delete_adapter("reference")
 
-    model.push_to_hub(f"{sanitized_model_name}_{args.loss_type}")
+    trainer.push_to_hub(
+        f"{sanitized_model_name}-paraphrase-type-generation-apty-{args.loss_type}"
+    )
 
 
 if __name__ == "__main__":
