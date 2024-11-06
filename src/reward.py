@@ -298,9 +298,7 @@ def main() -> None:
 
     trainer.train()
 
-    trainer.push_to_hub(
-        f"{adapter_name.split('/')[-1]}-apty-reward"
-    )
+    trainer.push_to_hub(f"{adapter_name.split('/')[-1]}-apty-reward")
 
 
 if __name__ == "__main__":

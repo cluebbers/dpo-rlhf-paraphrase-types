@@ -6,12 +6,14 @@ import torch
 from datasets import Dataset
 from huggingface_hub import login
 from peft import LoraConfig, TaskType, get_peft_model
-from transformers import (AutoModelForCausalLM,
-                          AutoModelForSequenceClassification, AutoTokenizer,
-                          BitsAndBytesConfig)
+from transformers import (
+    AutoModelForCausalLM,
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+)
 from trl import PPOv2Config, PPOv2Trainer
-
-
+    
 def login_to_huggingface(token_path=None):
     """
     Login to the Hugging Face Hub using either the `HF_TOKEN` environment variable or a token file.
@@ -30,7 +32,7 @@ def login_to_huggingface(token_path=None):
             hf_token = token_file.read().strip()
 
     # Login to the Hugging Face Hub
-    login(token=hf_token)
+    login(token=hf_token, add_to_git_credential=True)
 
 
 def read_sentences_by_type(
@@ -96,8 +98,10 @@ def read_sentences_by_type(
 def process_dataset(apty_data: Dict[str, Dict[str, Any]]) -> List[Dict[str, Any]]:
 
     queries = [
-        f"<|start_header_id|>user<|end_header_id|>Instruction: Given the following sentence, generate a paraphrase with the following type. "
-        f"Sentence: {sentence} Paraphrase Type: {paraphrase_type}. <|eot_id|><|start_header_id|>assistant<|end_header_id|>Generated Paraphrase: "
+        f"Instruction: Given the following sentence, generate a paraphrase with the following types. "
+        f"Sentence: {sentence} \n "
+        f"Paraphrase Types: {paraphrase_type}\n\n"
+        f"Answer: "
         for paraphrase_type, details in apty_data.items()
         for sentence in details["sentences"]
     ]
@@ -112,15 +116,19 @@ def main():
     gradient_accumulation_steps = 1
     batch_size = mini_batch_size * gradient_accumulation_steps
 
-    policy_name = "out/gen-models/llama-3.1-8b-etpc"
-    reward_model_name = "out/cls-models/reward_llama-3.1-8b-etpc/checkpoint-17"
+    policy_name = "cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc"
+    reward_model_name = (
+        "cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc-apty-reward"
+    )
 
     login_to_huggingface("token_file.txt")
-    
+
     if torch.cuda.is_available():
         device = torch.device("cuda")
         num_gpus = torch.cuda.device_count()
-        logging.info(f"Using {num_gpus} GPUs: {[torch.cuda.get_device_name(i) for i in range(num_gpus)]}")
+        logging.info(
+            f"Using {num_gpus} GPUs: {[torch.cuda.get_device_name(i) for i in range(num_gpus)]}"
+        )
     else:
         device = torch.device("cpu")
         logging.info(f"Using device: {device}")
@@ -131,8 +139,7 @@ def main():
         padding_side="left",
     )
 
-    tokenizer.add_special_tokens({"pad_token": "[PAD]"})
-    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.pad_token = "<|finetune_right_pad_id|>"
 
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -147,23 +154,35 @@ def main():
         attn_implementation="flash_attention_2",
     )
 
-    if not hasattr(policy.config, "peft_type") or policy.config.peft_type is None:
-        peft_config = LoraConfig(
-            task_type=TaskType.SEQ_CLS,
-            r=8,
-            lora_alpha=32,
-            target_modules=["q_proj", "v_proj"],
-            lora_dropout=0.05,
-            bias="none",
-        )
-        policy = get_peft_model(policy, peft_config)
+    policy.config.pad_token_id = tokenizer.pad_token_id
+    if policy is None:
+        raise ValueError("Failed to load policy model")
+    
+    ref_policy = AutoModelForCausalLM.from_pretrained(
+        policy_name,
+        quantization_config=bnb_config,
+        torch_dtype=torch.bfloat16,
+        low_cpu_mem_usage=True,
+        attn_implementation="flash_attention_2",
+    )
 
-    policy.resize_token_embeddings(len(tokenizer))
-    policy.config.pad_token_id = tokenizer.pad_token_id or policy.config.eos_token_id
-    
-    ref_policy = AutoModelForCausalLM.from_pretrained(policy_name)
-    reward_model = AutoModelForSequenceClassification.from_pretrained(reward_model_name)
-    
+    ref_policy.config.pad_token_id = tokenizer.pad_token_id
+    if ref_policy is None:
+        raise ValueError("Failed to load ref_policy model")
+
+    reward_model = AutoModelForSequenceClassification.from_pretrained(
+        reward_model_name,
+        quantization_config=bnb_config,
+        torch_dtype=torch.bfloat16,
+        low_cpu_mem_usage=True,
+        attn_implementation="flash_attention_2",
+        num_labels=1,
+    )
+
+    reward_model.config.pad_token_id = tokenizer.pad_token_id
+    if reward_model is None:
+        raise ValueError("Failed to load reward model")
+
     torch.cuda.empty_cache()
 
     # Read sentences by type from the APTY dataset
@@ -179,7 +198,7 @@ def main():
         batch_size=batch_size,
         mini_batch_size=mini_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
-        output_dir="out/gen-models/ppo_model",
+        output_dir="out/gen-models/Llama-3.1-8B-paraphrase-type-generation-etpc-apty-ppo",
         save_total_limit=1,
     )
 
@@ -195,10 +214,8 @@ def main():
     torch.cuda.empty_cache()
 
     trainer.train()
-    
-    trainer.save_model("out/gen-models/ppo_model")	
-    
-    trainer.push_to_hub("Llama-3.1-8B-PTG-PPO")
+
+    trainer.push_to_hub("Llama-3.1-8B-paraphrase-type-generation-etpc-apty-ppo")
 
 
 if __name__ == "__main__":
