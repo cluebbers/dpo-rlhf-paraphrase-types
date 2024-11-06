@@ -1,11 +1,8 @@
 import logging
 import os
-from typing import Any, Dict, List, Optional, Tuple, Union
 
-import numpy as np
 import pandas as pd
 import torch
-import optuna
 from datasets import Dataset, load_dataset
 from huggingface_hub import login
 from peft import PeftConfig, PeftModel, TaskType
@@ -14,7 +11,6 @@ from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
     BitsAndBytesConfig,
-    PreTrainedModel,
     PreTrainedTokenizerBase,
 )
 from trl import RewardConfig, RewardTrainer
@@ -208,92 +204,6 @@ def process_dataset_for_reward_model(
     return Dataset.from_dict(processed_data)
 
 
-def hyperparameter_space(trial: optuna.trial.Trial) -> Dict[str, Union[float, int]]:
-    """
-    Define the hyperparameter space to be searched by Optuna.
-
-    This function returns a dictionary of hyperparameters to be searched by Optuna.
-    The hyperparameters are:
-
-    - learning_rate (float): The learning rate of the optimizer, sampled from a log-uniform distribution between 1e-5 and 1e-1.
-    - weight_decay (float): The weight decay of the optimizer, sampled from a log-uniform distribution between 1e-6 and 1e-2.
-    - per_device_train_batch_size (int): The batch size per device for training, sampled from a categorical distribution of [16, 32].
-
-    The hyperparameters are sampled by Optuna and passed to the Trainer for training.
-
-    Args:
-        trial (Trial): The Optuna trial to sample hyperparameters from.
-
-    Returns:
-        Dict[str, Union[float, int]]: A dictionary of sampled hyperparameters.
-    """
-    return {
-        "learning_rate": trial.suggest_float("learning_rate", 1e-5, 5e-4, log=True),
-        "per_device_train_batch_size": trial.suggest_categorical(
-            "per_device_train_batch_size", [2, 4, 8]
-        ),
-        "gradient_accumulation_steps": trial.suggest_categorical(
-            "gradient_accumulation_steps", [4, 8, 16]
-        ),
-        "num_train_epochs": trial.suggest_int("num_train_epochs", 3, 10),
-        "warmup_ratio": trial.suggest_float("warmup_ratio", 0.05, 0.2),
-        "lr_scheduler_type": trial.suggest_categorical(
-            "lr_scheduler_type",
-            ["linear", "cosine", "polynomial"],
-        ),
-        "label_smoothing_factor": trial.suggest_float(
-            "label_smoothing_factor", 0.0, 0.2
-        ),
-        "weight_decay": trial.suggest_float("weight_decay", 1e-6, 0.1, log=True),
-        "meaningful_gap_threshold": trial.suggest_float(
-            "meaningful_gap_threshold", 0.05, 0.3
-        ),  # Custom metric
-    }
-
-
-def model_init(trial: Optional[optuna.trial.Trial] = None) -> PreTrainedModel:
-    global tokenizer
-    global model_cache
-    if model_cache is not None:
-        logging.info("Using cached model.")
-        return model_cache
-    logging.info("Initializing model...")
-    model_name = "meta-llama/Llama-3.1-8B"
-    adapter_name = "cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc"
-
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.bfloat16,
-    )
-
-    model = AutoModelForSequenceClassification.from_pretrained(
-        model_name,
-        quantization_config=bnb_config,
-        low_cpu_mem_usage=True,
-        torch_dtype=torch.bfloat16,
-        attn_implementation="flash_attention_2",
-        ignore_mismatched_sizes=True,
-        num_labels=1,
-    )
-
-    # 2. Get original PEFT config but modify for classification
-    peft_config = PeftConfig.from_pretrained(adapter_name)
-    peft_config.task_type = TaskType.SEQ_CLS
-
-    # 3. Create new PEFT model with classification config
-    model = PeftModel.from_pretrained(model, adapter_name, config=peft_config)
-
-    model.config.pad_token_id = tokenizer.pad_token_id
-
-    model_cache = model
-
-    return model
-
-
-tokenizer = None
-model_cache = None
-
-
 def main() -> None:
     """
     Main function to train and evaluate the reward model.
@@ -307,9 +217,9 @@ def main() -> None:
     Returns:
         None
     """
-    global tokenizer
-
     login_to_huggingface("token_file.txt")
+
+    torch.cuda.empty_cache()
 
     # Load model and tokenizer
     model_name = "meta-llama/Llama-3.1-8B"
@@ -321,7 +231,34 @@ def main() -> None:
     )
     tokenizer.pad_token = "<|finetune_right_pad_id|>"
 
+    bnb_config = BitsAndBytesConfig(
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.bfloat16,
+    )
+
+    # 2. Get original PEFT config but modify for classification
+    peft_config = PeftConfig.from_pretrained(adapter_name)
+    peft_config.task_type = TaskType.SEQ_CLS
+
+    # def model_init(trial: Optional[optuna.trial.Trial] = None) -> PreTrainedModel:
+
     torch.cuda.empty_cache()
+    logging.info("Initializing model...")
+
+    model = AutoModelForSequenceClassification.from_pretrained(
+        model_name,
+        quantization_config=bnb_config,
+        low_cpu_mem_usage=True,
+        torch_dtype=torch.bfloat16,
+        attn_implementation="flash_attention_2",
+        ignore_mismatched_sizes=True,
+        num_labels=1,
+    )
+
+    # 3. Create new PEFT model with classification config
+    model = PeftModel.from_pretrained(model, adapter_name, config=peft_config)
+
+    model.config.pad_token_id = tokenizer.pad_token_id
 
     # Load datasets
     # Load and preprocess APTY-ranked dataset
@@ -341,52 +278,29 @@ def main() -> None:
     training_args = RewardConfig(
         output_dir=f"./out/cls-models/{adapter_name.split('/')[-1]}-apty-reward",
         remove_unused_columns=False,
-        gradient_accumulation_steps=4,
-        per_device_train_batch_size=4,
         load_best_model_at_end=True,
         bf16=True,
-        num_train_epochs=5,
         eval_strategy="epoch",
         save_strategy="epoch",
         save_total_limit=1,
-        warmup_ratio=0.1,
         max_length=512,
-        greater_is_better=True,
     )
 
     trainer = RewardTrainer(
-        model_init=lambda trial: model_init(trial),
+        model=model,
         args=training_args,
         tokenizer=tokenizer,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
     )
 
-    # # Perform the hyperparameter search using Optuna
-    best_run = trainer.hyperparameter_search(
-        direction="minimize",
-        hp_space=hyperparameter_space,
-        n_trials=200,  # Number of trials for hyperparameter search
-        backend="optuna",
-    )
-
-    # # Save the best parameters after the search using a DataFrame
-    best_hyperparameters: Dict[str, Union[float, int]] = best_run.hyperparameters
-    best_params_df = pd.DataFrame([best_hyperparameters])
-
-    output_params = (
-        f"out/cls-models/{adapter_name.split('/')[-1]}_hyperparameters_reward.csv"
-    )
-    best_params_df.to_csv(output_params, index=False)
-    print(f"Results written to {output_params}")
-
     torch.cuda.empty_cache()
 
-    #trainer.train()
+    trainer.train()
 
-    # trainer.push_to_hub(
-    #     f"{adapter_name.split('/')[-1]}-apty-reward"
-    # )
+    trainer.push_to_hub(
+        f"{adapter_name.split('/')[-1]}-apty-reward"
+    )
 
 
 if __name__ == "__main__":
