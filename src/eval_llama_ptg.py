@@ -574,20 +574,8 @@ def generate_and_evaluate(
     for model_name, adapter_dir, model_suffix in models:
         # Load the model and adapter
         if adapter_dir:
-            if os.path.exists(
-                os.path.join(adapter_dir, "model.safetensors.index.json")
-            ):
-                logging.info(f"Loading merged model {model_suffix} from {adapter_dir}")
-                model = AutoModelForCausalLM.from_pretrained(
-                    adapter_dir,
-                    torch_dtype=torch.bfloat16,  # Load in bfloat16 precision
-                    low_cpu_mem_usage=True,
-                    attn_implementation="flash_attention_2",
-                )
-                model.to("cuda")
-            else:
                 logging.info(
-                    f"Loading base model and adding adapter {model_suffix} from {adapter_dir}"
+                    f"Loading {model_name} and adding adapter {model_suffix} from {adapter_dir}"
                 )
                 model = AutoModelForCausalLM.from_pretrained(
                     model_name,
