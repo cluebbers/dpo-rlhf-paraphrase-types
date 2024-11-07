@@ -7,9 +7,6 @@ from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 import torch
 from datasets import load_dataset
-
-# Initialize Hugging Face Hub login (if needed)
-from huggingface_hub import login
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
 from rouge import Rouge
 from tqdm import tqdm
@@ -21,31 +18,12 @@ from transformers import (
     PreTrainedTokenizerBase,
 )
 
+from common import TOP_10_PARAPHRASE_TYPES, login_to_huggingface
+
 # Logging configuration
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
-
-
-def login_to_huggingface(token_path=None):
-    """
-    Login to the Hugging Face Hub using either the `HF_TOKEN` environment variable or a token file.
-
-    Args:
-        token_path (str, optional): Path to the file containing the Hugging Face token.
-
-    Returns:
-        None
-    """
-    # Check if the HF_TOKEN environment variable is set
-    hf_token = os.getenv("HF_TOKEN")
-    if not hf_token and token_path:
-        # If not, read the token from the file
-        with open(token_path, "r") as token_file:
-            hf_token = token_file.read().strip()
-
-    # Login to the Hugging Face Hub
-    login(token=hf_token, add_to_git_credential=True)
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -735,6 +713,11 @@ def main() -> None:
     etpc_data = (
         load_dataset("jpwahle/etpc", split="train")
         .filter(lambda x: x["etpc_label"] == 1)
+        .filter(
+            lambda x: all(
+                ptype in TOP_10_PARAPHRASE_TYPES for ptype in x["paraphrase_types"]
+            )
+        )
         .shuffle(seed=42)
         .select(range(num_etpc))
     )

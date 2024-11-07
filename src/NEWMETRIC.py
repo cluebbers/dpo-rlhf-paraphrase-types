@@ -7,19 +7,7 @@ import torch
 from sklearn.metrics import f1_score
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
-TOP_10_PARAPHRASE_TYPES = [
-    "addition/deletion",
-    "change of order",
-    "derivational changes",
-    "inflectional changes",
-    "punctuation changes",
-    "same polarity substitution (contextual)",
-    "semantic based",
-    "spelling changes",
-    "subordination and nesting changes",
-    "synthetic/analytic substitution",
-]
-
+from common import TOP_10_PARAPHRASE_TYPES
 
 class ParaphraseTypeEvaluator:
     def __init__(self, model_name: str, top_k: int = 10):
