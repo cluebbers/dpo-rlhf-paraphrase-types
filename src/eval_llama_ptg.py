@@ -8,6 +8,7 @@ import pandas as pd
 import torch
 from datasets import load_dataset
 from nltk.translate.bleu_score import SmoothingFunction, sentence_bleu
+from peft import PeftModel
 from rouge import Rouge
 from tqdm import tqdm
 from transformers import (
@@ -19,6 +20,24 @@ from transformers import (
 )
 
 from common import TOP_10_PARAPHRASE_TYPES, login_to_huggingface
+
+"""
+Llama-2-7b
+python3 src/eval_llama_ptg.py \
+--model_name meta-llama/Llama-2-7b-hf \
+--etpc_dir out/gen-models/llama-2-7b-etpc \
+--dpo_dir out/gen-models/Llama-2-7b-hf-paraphrase-type-generation-apty-sigmoid \
+--ipo_dir out/gen-models/dpo_meta-llama/Llama-2-7b-hf
+
+Llama-3.1-8B
+python3 src/eval_llama_ptg.py \ 
+--model_name meta-llama/Llama-3.1-8B \
+--etpc_dir cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc \
+--dpo_dir out/gen-models/Llama-3.1-8B-paraphrase-type-generation-apty-sigmoid \
+--ipo_dir out/gen-models/dpo_meta-llama/Llama-3.1-8B
+"""
+
+
 
 # Logging configuration
 logging.basicConfig(
@@ -34,7 +53,7 @@ def parse_arguments() -> argparse.Namespace:
         --model_name (str): Path to the base model. Defaults to "meta-llama/Llama-3.1-8B".
         --etpc_dir (str): Directory containing the ETPC adapter. Defaults to "out/gen-models/llama-3.1-8b-etpc".
         --dpo_dir (str): Directory containing the DPO adapter. Defaults to "out/gen-models/dpo_out-gen-models-llama-3.1-8b-etpc_sigmoid".
-        --ipo_dir (str): Directory containing the DPO adapter. Defaults to "out/gen-models/dpo_out-gen-models-llama-3.1-8b-etpc_ipo".
+        --ipo_dir (str): Directory containing the IPO adapter. Defaults to "out/gen-models/dpo_out-gen-models-llama-3.1-8b-etpc_ipo".
 
     Returns:
         argparse.Namespace: The parsed command line arguments.
@@ -63,8 +82,8 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--ipo_dir",
         type=str,
-        default="cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-ipo",
-        help="DPO adapter directory.",
+        default="out/gen-models/Llama-3.1-8B-paraphrase-type-generation-apty-sigmoid",
+        help="IPO adapter directory.",
     )
 
     args: argparse.Namespace = parser.parse_args()
@@ -80,7 +99,7 @@ def parse_arguments() -> argparse.Namespace:
     return args
 
 
-def create_etpc_prompts(data: List[Dict[str, Any]]) -> Tuple[List[str], List[str]]:
+def preprocess_etpc(data: List[Dict[str, Any]]) -> Dict[str, List[str]]:
     """
     Converts the ETPC data into prompts and references
     for paraphrase generation.
@@ -89,10 +108,15 @@ def create_etpc_prompts(data: List[Dict[str, Any]]) -> Tuple[List[str], List[str
         data (List[Dict[str, Any]]): The ETPC dataset.
 
     Returns:
-        Tuple[List[str], List[str]]: A tuple containing the prompts and references.
+        Dict[str, List[str]]: A dictionary containing:
+            - "prompts": List of formatted prompts
+            - "references": List of reference paraphrases
+            - "original_sentences": List of original sentences
     """
     prompts: List[str] = []
     references: List[str] = []
+    original_sentences: List[str] = []
+    apt: List[str] = []
     for instance in data:
         # Skip instances without any paraphrase types
         if not instance["paraphrase_types"]:
@@ -108,8 +132,44 @@ def create_etpc_prompts(data: List[Dict[str, Any]]) -> Tuple[List[str], List[str
         prompts.append(prompt)
         # Add the reference paraphrase
         references.append(instance["sentence2"])
+        original_sentences.append(instance["sentence1"])
+        apt.append(", ".join(instance["paraphrase_types"]))
 
-    return prompts, references
+    return {
+        "prompts": prompts,
+        "references": references,
+        "original_sentences": original_sentences,
+        "APT": apt,
+    }
+
+
+def create_apty_prompts(data: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    """
+    Converts the APTY data into prompts and original sentences for paraphrase generation.
+
+    Args:
+        data (Dict[str, Dict[str, Any]]): The APTY dataset dictionary.
+
+    Returns:
+        Dict[str, Dict[str, Any]]: Dictionary containing prompts and original sentences per type.
+    """
+    prompts_by_type: Dict[str, Dict[str, Any]] = {}
+
+    for paraphrase_type, details in data.items():
+        sentences = details["sentences"]
+        prompts = [
+            f"Instruction: Given the following sentence, generate a paraphrase with the following types. "
+            f"Sentence: {sentence} \n "
+            f"Paraphrase Types: {paraphrase_type}\n\n"
+            f"Answer: "
+            for sentence in sentences
+        ]
+        prompts_by_type[paraphrase_type] = {
+            "prompts": prompts,
+            "original_sentences": sentences,
+        }
+
+    return prompts_by_type
 
 
 def read_sentences_by_type(
@@ -192,7 +252,8 @@ def load_tokenizer(model_name: str) -> PreTrainedTokenizerBase:
         use_fast=True,
     )
 
-    tokenizer.pad_token = "<|finetune_right_pad_id|>"
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
 
     return tokenizer
 
@@ -216,7 +277,6 @@ def tokenize_data(
         prompts,
         return_tensors="pt",  # Return PyTorch tensors
         padding=True,  # Pad the inputs to the longest sequence
-        truncation=True,  # Truncate long sequences
     )
 
     return tokenized_inputs
@@ -237,6 +297,7 @@ def generate_paraphrases(
     all_paraphrases = []
     total_examples = len(inputs["input_ids"])
     num_batches = (total_examples + batch_size - 1) // batch_size
+    device = model.device
 
     model.eval()
     progress_bar = tqdm(total=num_batches, desc="Generating paraphrases", unit="batch")
@@ -244,25 +305,22 @@ def generate_paraphrases(
     try:
         with torch.no_grad():
             for i in range(0, total_examples, batch_size):
-                batch_input_ids = inputs["input_ids"][i : i + batch_size]
-                batch_attention_mask = inputs["attention_mask"][i : i + batch_size]
+                batch_input_ids = inputs["input_ids"][i : i + batch_size].to(device)
+                batch_attention_mask = inputs["attention_mask"][i : i + batch_size].to(
+                    device
+                )
 
                 for retry in range(max_retries):
                     try:
-                        current_temperature = temperature * (1 + retry * 0.2)
 
                         outputs = model.generate(
                             input_ids=batch_input_ids,
                             attention_mask=batch_attention_mask,
                             max_new_tokens=max_new_tokens,
-                            temperature=current_temperature,
+                            temperature=temperature,
                             top_p=top_p,
-                            do_sample=True,
                             pad_token_id=tokenizer.pad_token_id,
                             eos_token_id=tokenizer.eos_token_id,
-                            num_return_sequences=1,
-                            no_repeat_ngram_size=3,
-                            repetition_penalty=1.2,
                         )
 
                         generated_tokens = outputs[:, input_token_length:]
@@ -273,19 +331,19 @@ def generate_paraphrases(
                         batch_paraphrases = []
                         for output in decoded_outputs:
                             output = output.strip()
-                            if "\n" in output:
-                                output = output.split("\n")[0]
-                            if "Paraphrase Types:" in output:
-                                output = output.split("Paraphrase Types:")[0]
-                            if "Answer:" in output:
-                                output = output.split("Answer:")[-1]
+                            # if "\n" in output:
+                            #     output = output.split("\n")[0]
+                            # if "Paraphrase Types:" in output:
+                            #     output = output.split("Paraphrase Types:")[0]
+                            # if "Answer:" in output:
+                            #     output = output.split("Answer:")[-1]
 
-                            output = output.strip(" .,")
+                            # output = output.strip(" .,")
 
-                            if len(output.split()) < 3:
-                                output = "[ERROR: Generated text too short] " + output
-                            elif not output:
-                                output = "[ERROR: Empty generation]"
+                            # if len(output.split()) < 3:
+                            #     output = "[ERROR: Generated text too short] " + output
+                            # elif not output:
+                            #     output = "[ERROR: Empty generation]"
 
                             batch_paraphrases.append(output)
 
@@ -412,9 +470,8 @@ def evaluate_individual_paraphrases(
 def process_model_generation(
     model: PreTrainedModel,
     tokenizer: PreTrainedTokenizerBase,
-    tokenized_apty_data: Dict[str, Dict[str, torch.Tensor]],
-    tokenized_etpc_data: Dict[str, torch.Tensor],
-    etpc_references: List[str],
+    apty_dataset: Dict[str, Dict[str, torch.Tensor]],
+    etpc_dataset,
     model_suffix: str,
     batch_size: int,
 ) -> List[Dict[str, Any]]:
@@ -424,8 +481,8 @@ def process_model_generation(
     Args:
         model (PreTrainedModel): The pre-trained language model for generation.
         tokenizer (PreTrainedTokenizerBase): Tokenizer used for encoding and decoding text.
-        tokenized_apty_data (Dict[str, Dict[str, torch.Tensor]]): Tokenized inputs for APTY dataset.
-        tokenized_etpc_data (Dict[str, torch.Tensor]): Tokenized inputs for ETPC dataset.
+        apty_dataset (Dict[str, Dict[str, torch.Tensor]]): Tokenized inputs for APTY dataset.
+        etpc_dataset (Dict[str, torch.Tensor]): Tokenized inputs for ETPC dataset.
         etpc_references (List[str]): List of reference texts for ETPC dataset.
         model_suffix (str): Suffix to be added to the model name.
         batch_size (int): Number of examples per batch.
@@ -451,7 +508,7 @@ def process_model_generation(
     model_counter = {"base_model": 0, "etpc_model": 1, "dpo_model": 2, "ipo_model": 3}
 
     # Generate paraphrases for APTY dataset
-    for paraphrase_type, tokenized_inputs in tokenized_apty_data.items():
+    for paraphrase_type, tokenized_inputs in apty_dataset.items():
         input_token_len: int = tokenized_inputs["input_ids"].shape[-1]
         paraphrases: List[str] = generate_paraphrases(
             model, tokenizer, tokenized_inputs, input_token_len, batch_size=batch_size
@@ -460,8 +517,6 @@ def process_model_generation(
         for original_sentence, paraphrase in zip(
             tokenized_inputs["original_sentences"], paraphrases
         ):
-            if not paraphrase:
-                continue
 
             key: str = (
                 f"{original_sentence}_{paraphrase_type}"  # Combine original sentence and type
@@ -484,46 +539,34 @@ def process_model_generation(
             )
 
     # Generate paraphrases for ETPC dataset
-    input_token_len: int = tokenized_etpc_data["input_ids"].shape[-1]
+    input_token_len: int = etpc_dataset["input_ids"].shape[-1]
     etpc_paraphrases: List[str] = generate_paraphrases(
-        model, tokenizer, tokenized_etpc_data, input_token_len, batch_size=batch_size
+        model,
+        tokenizer,
+        etpc_dataset,
+        input_token_len,
+        batch_size=batch_size,
     )
-    for original_sentence, paraphrase, reference in zip(
-        tokenized_etpc_data["original_sentences"], etpc_paraphrases, etpc_references
+    for original_sentence, paraphrase, reference, apt in zip(
+        etpc_dataset["original_sentences"],
+        etpc_paraphrases,
+        etpc_dataset["references"],
+        etpc_dataset["APT"],
     ):
-
-        # Extract the part between "Sentence: " and " Paraphrase Types:"
-        start: int = original_sentence.find("Sentence: ") + len("Sentence: ")
-        end: int = original_sentence.find("Paraphrase Types: ")
-        if start != -1 and end != -1:
-            cleaned_sentence: str = original_sentence[start:end].strip()
-        else:
-            cleaned_sentence: str = original_sentence
-
-        # Extract the part between "Paraphrase Types:" and " Generated Paraphrase:"
-        apt_start: int = original_sentence.find("Paraphrase Types: ") + len(
-            "Paraphrase Types: "
-        )
-        apt_end: int = original_sentence.find("Answer: ")
-        if apt_start != -1 and apt_end != -1:
-            apt: str = original_sentence[apt_start:apt_end].strip()
-        else:
-            apt: str = ""
-
         evaluation: Dict[str, float] = evaluate_individual_paraphrases(
             [paraphrase], [reference]
         )[0]
-        if cleaned_sentence not in grouped_paraphrases:
-            grouped_paraphrases[cleaned_sentence] = {
-                "id": hash(cleaned_sentence) % 1000,
-                "Original": cleaned_sentence,
+        if original_sentence not in grouped_paraphrases:
+            grouped_paraphrases[original_sentence] = {
+                "id": hash(original_sentence) % 1000,
+                "Original": original_sentence,
                 "APT": apt,
                 "reference": reference,
                 "dataset": "ETPC",
                 "List": [],
             }
 
-        grouped_paraphrases[cleaned_sentence]["List"].append(
+        grouped_paraphrases[original_sentence]["List"].append(
             {
                 "id": model_counter[model_suffix],
                 "body": paraphrase,
@@ -538,9 +581,8 @@ def process_model_generation(
 def generate_and_evaluate(
     tokenizer: PreTrainedTokenizerBase,
     models: List[Tuple[str, str, str]],
-    tokenized_apty_data: Dict[str, List[Dict[str, Any]]],
-    tokenized_etpc_data: Dict[str, List[Dict[str, Any]]],
-    etpc_references: List[str],
+    apty_dataset: Dict[str, List[Dict[str, Any]]],
+    etpc_dataset,
     output_csv: str,
     output_json: str,
     batch_size: int,
@@ -567,38 +609,26 @@ def generate_and_evaluate(
     # Configure the BitsAndBytes config for loading models in 4-bit precision
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,  # Load in 4-bit precision
-        bnb_4bit_compute_dtype=torch.bfloat16,  # Use bfloat16 for computations
+        bnb_4bit_compute_dtype=torch.float16,  # Use bfloat16 for computations
     )
 
     # Loop over each model and adapter
     for model_name, adapter_dir, model_suffix in models:
+        logging.info(f"Loading model from {model_name}")
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            quantization_config=bnb_config,
+            torch_dtype=torch.float16,
+            low_cpu_mem_usage=True,
+            attn_implementation="flash_attention_2",
+        )
         # Load the model and adapter
         if adapter_dir:
-                logging.info(
-                    f"Loading {model_name} and adding adapter {model_suffix} from {adapter_dir}"
-                )
-                model = AutoModelForCausalLM.from_pretrained(
-                    model_name,
-                    quantization_config=bnb_config,
-                    torch_dtype=torch.bfloat16,  # Load in bfloat16 precision
-                    low_cpu_mem_usage=True,
-                    attn_implementation="flash_attention_2",
-                )
-                model.load_adapter(adapter_dir, adapter_name=model_suffix)
-                model.set_adapter(model_suffix)
-        else:
-            logging.info(f"Loading model {model_suffix} from {model_name}")
-            model = AutoModelForCausalLM.from_pretrained(
-                model_name,
-                quantization_config=bnb_config,
-                torch_dtype=torch.bfloat16,  # Load in bfloat16 precision
-                low_cpu_mem_usage=True,
-                attn_implementation="flash_attention_2",
-            )
+            logging.info(f"Adding adapter {model_suffix} from {adapter_dir}")
+            model = PeftModel.from_pretrained(model, adapter_dir)
 
         # Resize the model's embeddings to handle new tokens
-        model.resize_token_embeddings(len(tokenizer))
-        model.config.pad_token_id = tokenizer.pad_token_id or model.config.eos_token_id
+        model.config.pad_token_id = tokenizer.pad_token_id
 
         # Put the model in evaluation mode
         model.eval()
@@ -607,9 +637,8 @@ def generate_and_evaluate(
         paraphrases: Dict[str, Dict[str, Any]] = process_model_generation(
             model,
             tokenizer,
-            tokenized_apty_data,
-            tokenized_etpc_data,
-            etpc_references,
+            apty_dataset,
+            etpc_dataset,
             model_suffix,
             batch_size,
         )
@@ -684,8 +713,8 @@ def main() -> None:
     login_to_huggingface("token_file.txt")
 
     batch_size: int = 10
-    num_apty: int = 10  # per type
-    num_etpc: int = 100
+    num_apty: int = 1  # per type
+    num_etpc: int = 10
 
     output_csv: str = f"out/gen-models/eval_{args.model_name.split('/')[-1]}.csv"
     output_json: str = (
@@ -697,63 +726,59 @@ def main() -> None:
         "out/basesentences", num_examples=num_apty
     )
 
+    apty_dataset = create_apty_prompts(apty_data)
+
     # Load the ETPC dataset and filter out sentences without paraphrases
     etpc_data = (
         load_dataset("jpwahle/etpc", split="train")
         .filter(lambda x: x["etpc_label"] == 1)
         .filter(
             lambda x: all(
-                ptype in TOP_10_PARAPHRASE_TYPES for ptype in x["paraphrase_types"]
+                ptype.lower() in TOP_10_PARAPHRASE_TYPES
+                for ptype in x["paraphrase_types"]
             )
         )
         .shuffle(seed=42)
-        .select(range(num_etpc))
     )
 
+    num_etpc = min(num_etpc, len(etpc_data))
+    etpc_data = etpc_data.select(range(num_etpc))
+
     # Create prompts and references from the test set
-    etpc_prompts: List[str]
-    etpc_references: List[str]
-    etpc_prompts, etpc_references = create_etpc_prompts(etpc_data)
+    etpc_dataset = preprocess_etpc(etpc_data)
 
     tokenizer = load_tokenizer(args.model_name)
 
     # Pre-tokenize APTY data
-    tokenized_apty_data: Dict[str, Dict[str, Any]] = {
+    apty_dataset = {
         paraphrase_type: {
-            **tokenize_data(
-                tokenizer,
-                [
-                    f"Instruction: Given the following sentence, generate a paraphrase with the following types. "
-                    f"Sentence: {sentence} \n "
-                    f"Paraphrase Types: {paraphrase_type}\n\n"
-                    f"Answer: "
-                    for sentence in sentences
-                ],
-            ),
-            "original_sentences": sentences,  # Ensure this matches the number of input_ids
+            **tokenize_data(tokenizer, details["prompts"]),
+            "original_sentences": details["original_sentences"],
         }
-        for paraphrase_type, details in apty_data.items()
-        for sentences in [details["sentences"][:num_apty]]  # Limit to `num_examples`
+        for paraphrase_type, details in apty_dataset.items()
     }
 
     # Pre-tokenize ETPC data
-    tokenized_etpc_data: Dict[str, Any] = tokenize_data(tokenizer, etpc_prompts)
-    tokenized_etpc_data["original_sentences"] = etpc_prompts
+    etpc_dataset = {
+        **tokenize_data(tokenizer, etpc_dataset["prompts"]),
+        "references": etpc_dataset["references"],
+        "original_sentences": etpc_dataset["original_sentences"],
+        "APT": etpc_dataset["APT"],
+    }
 
-    models: List[Tuple[str, Optional[str], str]] = [
-        (args.model_name, None, "base_model"),
-        (args.model_name, args.etpc_dir, "etpc_model"),
-        (args.model_name, args.dpo_dir, "dpo_model"),  # DPO adapter
-        (args.model_name, args.ipo_dir, "ipo_model"),  # IPO adapter
+    models: List[Tuple[str, Optional[str], Optional[str]]] = [        
+        #(args.model_name, None, "base_model"),
+        #(args.model_name, args.etpc_dir, "etpc_model"),
+        (args.model_name, args.dpo_dir, "dpo_model"), 
+        (args.model_name, args.ipo_dir, "ipo_model"), 
     ]
 
     # Evaluate the models on the APTY and ETPC datasets
     generate_and_evaluate(
         tokenizer,
         models,
-        tokenized_apty_data,
-        tokenized_etpc_data,
-        etpc_references,
+        apty_dataset,
+        etpc_dataset,
         output_csv,
         output_json,
         batch_size,

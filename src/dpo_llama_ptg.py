@@ -5,20 +5,17 @@ from typing import Optional, Tuple
 
 import torch
 from datasets import load_dataset
-from peft import AutoPeftModelForCausalLM
+from peft import AutoPeftModelForCausalLM, PeftModel, PeftConfig, get_peft_model
 from transformers import (
     AutoTokenizer,
     BitsAndBytesConfig,
     PreTrainedModel,
     PreTrainedTokenizerBase,
+    AutoModelForCausalLM,
 )
 from trl import DPOConfig, DPOTrainer
 
 from common import login_to_huggingface, preprocess_apty_ranked_dataset
-
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -27,12 +24,9 @@ def parse_arguments() -> argparse.Namespace:
 
     The following arguments can be specified:
 
-    --model_name (str): Path to the model to use for training. Defaults to "out/gen-models/llama-3.1-8b-etpc".
-    --adapter_dir (str): Name of the PEFT adapter to use for training. Defaults to None.
-    --loss_type (str): Type of loss to use for training. Defaults to "sigmoid".
-
-    Returns:
-        argparse.Namespace: The parsed command line arguments.
+    --model_name (str):     Path to the model to use for training. Defaults to "meta-llama/Llama-3.1-8B".
+    --adapter_dir (str):    Name of the PEFT adapter to use for training. Defaults to "cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc".
+    --loss_type (str):      Type of loss to use for training. Defaults to "sigmoid".
     """
     parser = argparse.ArgumentParser(description="Run DPO training")
     parser.add_argument(
@@ -56,7 +50,7 @@ def parse_arguments() -> argparse.Namespace:
     )
     args = parser.parse_args()
 
-    if args.adapter_dir == "None":
+    if args.adapter_dir.lower() == "none":
         args.adapter_dir = None
 
     return args
@@ -76,26 +70,37 @@ def load_model_and_tokenizer(
     Returns:
         Tuple[PreTrainedModel, PreTrainedTokenizerBase]: A tuple containing the loaded model and tokenizer.
     """
-    logging.info(f"Loading model and tokenizer for {model_name}")
 
-    # Configure for 4-bit quantization
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16
     )
 
     tokenizer = AutoTokenizer.from_pretrained(
-        model_name, padding_side="left", padding=True, truncation=True
+        model_name,
+        padding_side="left",
+        padding=True,
     )
 
-    tokenizer.pad_token = "<|finetune_right_pad_id|>"
+    tokenizer.pad_token = tokenizer.eos_token
 
     logging.info(f"Loading PEFT adapter from {adapter_dir}")
-    model = AutoPeftModelForCausalLM.from_pretrained(
-        adapter_dir,
+    model = AutoModelForCausalLM.from_pretrained(
+        model_name,
         quantization_config=bnb_config,
-        is_trainable=True,
+        low_cpu_mem_usage=True,
     )
-    model.load_adapter(adapter_dir, adapter_name="reference")
+    if adapter_dir is not None:
+        model = PeftModel.from_pretrained(
+            model,
+            adapter_dir,
+            # adapter_name="dpo_train",
+            is_trainable=True,
+            low_cpu_mem_usage=True,
+        )
+
+        model.load_adapter(adapter_dir, adapter_name="reference")
+
+    model.config.pad_token_id = tokenizer.pad_token_id
 
     model = model.to(device)
 
@@ -114,32 +119,29 @@ def setup_dpo_trainer(
         train_dataset (DatasetDict): The training dataset.
         eval_dataset (DatasetDict): The evaluation dataset.
         output_dir (str): The directory to save the model to.
-        loss_type (str): The type of loss to use. Can be either 'kl' or 'js'.
+        loss_type (str): The type of loss to use. Can be either 'sigmoid' or 'ipo'.
 
     Returns:
         DPOTrainer: The set up DPO trainer.
     """
-    # Set up the training arguments
+
     training_args = DPOConfig(
-        eval_strategy="epoch",  # Evaluate the model at the end of each epoch
-        per_device_train_batch_size=1,  # Number of samples per batch on each device
-        gradient_accumulation_steps=4,  # Number of batches to accumulate gradients for
-        output_dir=output_dir,  # Directory to save the model to
-        max_prompt_length=350,
-        max_length=512,
+        eval_strategy="epoch",
+        per_device_train_batch_size=8,
+        gradient_accumulation_steps=4,
+        output_dir=output_dir,
+        max_prompt_length=256,
+        optim="adamw_8bit",  # TODO
+        warmup_ratio=0.1,  # TODO
+        max_length=256,
         fp16=True,
         remove_unused_columns=False,
         loss_type=loss_type,  # The type of loss to use
         save_strategy="epoch",
         load_best_model_at_end=True,
-        num_train_epochs=3,
         save_total_limit=1,
-        weight_decay=0.01,
-        model_adapter_name="default",
-        ref_adapter_name="reference",
     )
 
-    # Set up the DPO trainer
     return DPOTrainer(
         model=model,
         args=training_args,
@@ -154,10 +156,13 @@ def main() -> None:
 
     This function parses command-line arguments, loads the model and tokenizer, loads the datasets, sets up the DPO trainer, trains the model, and saves the trained model.
     """
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+    )
     args = parse_arguments()
 
-    sanitized_model_name = args.model_name.split("/")[-1]
-    output_dir = f"./out/gen-models/{sanitized_model_name}-paraphrase-type-generation-apty-{args.loss_type}"
+    sanitized_model_name = f"{args.model_name.split('/')[-1]}-paraphrase-type-generation-apty-{args.loss_type}"
+    output_dir = f"./out/gen-models/{sanitized_model_name}"
     os.makedirs(output_dir, exist_ok=True)
 
     login_to_huggingface("token_file.txt")
@@ -175,17 +180,13 @@ def main() -> None:
     model, tokenizer = load_model_and_tokenizer(
         args.model_name, args.adapter_dir, device
     )
-    torch.cuda.empty_cache()
 
-    # Load and preprocess APTY-ranked dataset
     logging.info("Loading and preprocessing APTY-ranked dataset")
     dataset = load_dataset("worta/apty", "APTY-ranked")
     datasets = preprocess_apty_ranked_dataset(dataset["train"])
 
     train_dataset = datasets["train"]
     eval_dataset = datasets["eval"]
-
-    torch.cuda.empty_cache()
 
     trainer = setup_dpo_trainer(
         model, tokenizer, train_dataset, eval_dataset, output_dir, args.loss_type
@@ -194,13 +195,18 @@ def main() -> None:
     torch.cuda.empty_cache()
     trainer.train()
 
-    torch.cuda.empty_cache()
+    trainer.save_model(output_dir)  # TODO does it?
 
+    torch.cuda.empty_cache()
+    # reference adapter is only needed for training
     model.delete_adapter("reference")
 
-    trainer.push_to_hub(
-        f"{sanitized_model_name}-paraphrase-type-generation-apty-{args.loss_type}"
-    )
+    trainer.push_to_hub(sanitized_model_name)
+
+    # model = model.to(torch.float16)
+    # model = model.merge_and_unload()
+    # model.save_pretrained(output_dir)
+    # trainer.push_to_hub(sanitized_model_name)
 
 
 if __name__ == "__main__":
