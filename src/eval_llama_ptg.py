@@ -1,3 +1,19 @@
+"""
+Llama-2-7b
+python3 src/eval_llama_ptg.py \
+--model_name meta-llama/Llama-2-7b-hf \
+--etpc_dir out/gen-models/llama-2-7b-etpc \
+--dpo_dir out/gen-models/Llama-2-7b-hf-paraphrase-type-generation-etpc-apty-sigmoid-unsloth \
+--ipo_dir out/gen-models/Llama-2-7b-hf-paraphrase-type-generation-etpc-apty-ipo-unsloth
+
+Llama-3.1-8B
+python3 src/eval_llama_ptg.py \
+--model_name meta-llama/Llama-3.1-8B \
+--etpc_dir cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc \
+--dpo_dir out/gen-models/Llama-3.1-8B-paraphrase-type-generation-apty-sigmoid \
+--ipo_dir out/gen-models/Llama-3.1-8B-paraphrase-type-generation-apty-ipo
+"""
+
 import argparse
 import json
 import logging
@@ -19,24 +35,7 @@ from transformers import (
     PreTrainedTokenizerBase,
 )
 
-from common import TOP_10_PARAPHRASE_TYPES, login_to_huggingface
-
-"""
-Llama-2-7b
-python3 src/eval_llama_ptg.py \
---model_name meta-llama/Llama-2-7b-hf \
---etpc_dir out/gen-models/llama-2-7b-etpc \
---dpo_dir out/gen-models/Llama-2-7b-hf-paraphrase-type-generation-apty-sigmoid \
---ipo_dir out/gen-models/dpo_meta-llama/Llama-2-7b-hf
-
-Llama-3.1-8B
-python3 src/eval_llama_ptg.py \ 
---model_name meta-llama/Llama-3.1-8B \
---etpc_dir cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc \
---dpo_dir out/gen-models/Llama-3.1-8B-paraphrase-type-generation-apty-sigmoid \
---ipo_dir out/gen-models/dpo_meta-llama/Llama-3.1-8B
-"""
-
+from common import FILTER_PARAPHRASE_TYPES, login_to_huggingface
 
 
 # Logging configuration
@@ -70,19 +69,19 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--etpc_dir",
         type=str,
-        default="cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc",
+        default="out/gen-models/llama-3.1-8b-etpc",
         help="ETPC adapter directory.",
     )
     parser.add_argument(
         "--dpo_dir",
         type=str,
-        default="cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-sigmoid",
+        default="out/gen-models/dpo_out-gen-models-llama-3.1-8b-etpc_sigmoid",
         help="DPO adapter directory.",
     )
     parser.add_argument(
         "--ipo_dir",
         type=str,
-        default="out/gen-models/Llama-3.1-8B-paraphrase-type-generation-apty-sigmoid",
+        default="out/gen-models/dpo_out-gen-models-llama-3.1-8b-etpc_ipo",
         help="IPO adapter directory.",
     )
 
@@ -99,7 +98,7 @@ def parse_arguments() -> argparse.Namespace:
     return args
 
 
-def preprocess_etpc(data: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+def preprocess_etpc(data):
     """
     Converts the ETPC data into prompts and references
     for paraphrase generation.
@@ -318,6 +317,7 @@ def generate_paraphrases(
                             attention_mask=batch_attention_mask,
                             max_new_tokens=max_new_tokens,
                             temperature=temperature,
+                            do_sample=True,
                             top_p=top_p,
                             pad_token_id=tokenizer.pad_token_id,
                             eos_token_id=tokenizer.eos_token_id,
@@ -713,8 +713,8 @@ def main() -> None:
     login_to_huggingface("token_file.txt")
 
     batch_size: int = 10
-    num_apty: int = 1  # per type
-    num_etpc: int = 10
+    num_apty: int = 10  # per type
+    num_etpc: int = 100
 
     output_csv: str = f"out/gen-models/eval_{args.model_name.split('/')[-1]}.csv"
     output_json: str = (
@@ -730,11 +730,12 @@ def main() -> None:
 
     # Load the ETPC dataset and filter out sentences without paraphrases
     etpc_data = (
-        load_dataset("jpwahle/etpc", split="train")
-        .filter(lambda x: x["etpc_label"] == 1)
+        load_dataset("jpwahle/etpc", split="train").filter(
+            lambda x: x["etpc_label"] == 1
+        )
         .filter(
             lambda x: all(
-                ptype.lower() in TOP_10_PARAPHRASE_TYPES
+                ptype.lower() in FILTER_PARAPHRASE_TYPES
                 for ptype in x["paraphrase_types"]
             )
         )
@@ -743,8 +744,6 @@ def main() -> None:
 
     num_etpc = min(num_etpc, len(etpc_data))
     etpc_data = etpc_data.select(range(num_etpc))
-
-    # Create prompts and references from the test set
     etpc_dataset = preprocess_etpc(etpc_data)
 
     tokenizer = load_tokenizer(args.model_name)
@@ -766,11 +765,11 @@ def main() -> None:
         "APT": etpc_dataset["APT"],
     }
 
-    models: List[Tuple[str, Optional[str], Optional[str]]] = [        
-        #(args.model_name, None, "base_model"),
-        #(args.model_name, args.etpc_dir, "etpc_model"),
-        (args.model_name, args.dpo_dir, "dpo_model"), 
-        (args.model_name, args.ipo_dir, "ipo_model"), 
+    models: List[Tuple[str, Optional[str], Optional[str]]] = [
+        (args.model_name, None, "base_model"),
+        (args.model_name, args.etpc_dir, "etpc_model"),
+        (args.model_name, args.dpo_dir, "dpo_model"),
+        (args.model_name, args.ipo_dir, "ipo_model"),
     ]
 
     # Evaluate the models on the APTY and ETPC datasets
