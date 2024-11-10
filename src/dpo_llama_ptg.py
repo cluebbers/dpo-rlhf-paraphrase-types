@@ -1,3 +1,10 @@
+"""
+python3 src/dpo_llama_ptg.py \
+    --model_name=meta-llama/Llama-2-7b-hf \
+    --adapter_dir=out/gen-models/llama-2-7b-etpc \
+    --loss_type=sigmoid
+"""
+
 import argparse
 import logging
 import os
@@ -5,7 +12,7 @@ from typing import Optional, Tuple
 
 import torch
 from datasets import load_dataset
-from peft import AutoPeftModelForCausalLM, PeftModel, PeftConfig, get_peft_model
+from peft import PeftModel, PeftConfig
 from transformers import (
     AutoTokenizer,
     BitsAndBytesConfig,
@@ -72,7 +79,10 @@ def load_model_and_tokenizer(
     """
 
     bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True, bnb_4bit_compute_dtype=torch.float16
+        load_in_4bit=True, 
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4"
     )
 
     tokenizer = AutoTokenizer.from_pretrained(
@@ -82,18 +92,19 @@ def load_model_and_tokenizer(
     )
 
     tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.pad_token_id = tokenizer.eos_token_id
 
     logging.info(f"Loading PEFT adapter from {adapter_dir}")
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         quantization_config=bnb_config,
+        torch_dtype=torch.bfloat16,
         low_cpu_mem_usage=True,
     )
-    if adapter_dir is not None:
+    if adapter_dir is not None:        
         model = PeftModel.from_pretrained(
             model,
             adapter_dir,
-            # adapter_name="dpo_train",
             is_trainable=True,
             low_cpu_mem_usage=True,
         )
@@ -127,14 +138,15 @@ def setup_dpo_trainer(
 
     training_args = DPOConfig(
         eval_strategy="epoch",
-        per_device_train_batch_size=8,
+        per_device_train_batch_size=2,
         gradient_accumulation_steps=4,
         output_dir=output_dir,
-        max_prompt_length=256,
-        optim="adamw_8bit",  # TODO
-        warmup_ratio=0.1,  # TODO
-        max_length=256,
-        fp16=True,
+        max_prompt_length=512,
+        optim="adamw_8bit", 
+        warmup_ratio=0.1,  
+        learning_rate=5e-5,
+        max_length=1024,
+        bf16=True,
         remove_unused_columns=False,
         loss_type=loss_type,  # The type of loss to use
         save_strategy="epoch",
@@ -195,13 +207,13 @@ def main() -> None:
     torch.cuda.empty_cache()
     trainer.train()
 
-    trainer.save_model(output_dir)  # TODO does it?
+    trainer.save_model(output_dir) 
 
     torch.cuda.empty_cache()
     # reference adapter is only needed for training
     model.delete_adapter("reference")
 
-    trainer.push_to_hub(sanitized_model_name)
+    #trainer.push_to_hub(sanitized_model_name)
 
     # model = model.to(torch.float16)
     # model = model.merge_and_unload()
