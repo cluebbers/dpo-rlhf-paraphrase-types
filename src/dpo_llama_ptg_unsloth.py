@@ -1,7 +1,7 @@
 """
-python src/dpo_llama_gen_unsloth.py \
+python src/dpo_llama_ptg_unsloth.py \
  --model_name=meta-llama/Llama-2-7b-hf \
- --adapter_dir=out/gen-models/llama-7b-etpc
+ --adapter_dir=out/gen-models/llama-2-7b-etpc
  
 python src/dpo_llama_gen_unsloth.py \
  --model_name=meta-llama/Llama-3.1-8B \
@@ -378,29 +378,29 @@ def main(
         trainer.save_model(output_dir)
 
     # Load data and predict
-    FastLanguageModel.for_inference(model)
-    data_file = "out/generation_etpc_test.jsonl"
-    test_data = load_data(data_file)
+    # FastLanguageModel.for_inference(model)
+    # data_file = "out/generation_etpc_test.jsonl"
+    # test_data = load_data(data_file)
 
-    print("Generating paraphrases...")
-    generated_paraphrases = generate_paraphrases(
-        test_data,
-        model,
-        tokenizer=tokenizer,
-        max_gen_len=max_gen_len,
-        temperature=temperature,
-        top_p=top_p,
-        max_batch_size=max_batch_size,
-        num_examples=num_examples,
-    )
-    references = [item["messages"][1]["content"] for item in test_data[:num_examples]]
-    print(f"Number of paraphrases: {len(generated_paraphrases)}")
-    print(f"Number of references: {len(references)}")
+    # print("Generating paraphrases...")
+    # generated_paraphrases = generate_paraphrases(
+    #     test_data,
+    #     model,
+    #     tokenizer=tokenizer,
+    #     max_gen_len=max_gen_len,
+    #     temperature=temperature,
+    #     top_p=top_p,
+    #     max_batch_size=max_batch_size,
+    #     num_examples=num_examples,
+    # )
+    # references = [item["messages"][1]["content"] for item in test_data[:num_examples]]
+    # print(f"Number of paraphrases: {len(generated_paraphrases)}")
+    # print(f"Number of references: {len(references)}")
 
-    scores = evaluate(generated_paraphrases, references)
-    print(f"Model: {args.model_name}")
-    print(f"Adapter: {args.adapter_dir}")
-    print(scores)
+    # scores = evaluate(generated_paraphrases, references)
+    # print(f"Model: {args.model_name}")
+    # print(f"Adapter: {args.adapter_dir}")
+    # print(scores)
 
 
 if __name__ == "__main__":
