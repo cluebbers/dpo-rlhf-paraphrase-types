@@ -12,13 +12,13 @@ from typing import Optional, Tuple
 
 import torch
 from datasets import load_dataset
-from peft import PeftModel, PeftConfig
+from peft import PeftModel
 from transformers import (
+    AutoModelForCausalLM,
     AutoTokenizer,
     BitsAndBytesConfig,
     PreTrainedModel,
     PreTrainedTokenizerBase,
-    AutoModelForCausalLM,
 )
 from trl import DPOConfig, DPOTrainer
 
@@ -79,10 +79,10 @@ def load_model_and_tokenizer(
     """
 
     bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True, 
+        load_in_4bit=True,
         bnb_4bit_compute_dtype=torch.bfloat16,
         bnb_4bit_use_double_quant=True,
-        bnb_4bit_quant_type="nf4"
+        bnb_4bit_quant_type="nf4",
     )
 
     tokenizer = AutoTokenizer.from_pretrained(
@@ -94,19 +94,18 @@ def load_model_and_tokenizer(
     tokenizer.pad_token = tokenizer.eos_token
     tokenizer.pad_token_id = tokenizer.eos_token_id
 
-    logging.info(f"Loading PEFT adapter from {adapter_dir}")
+    logging.info(f"Loading {model_name} and adding PEFT adapter {adapter_dir}")
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
         quantization_config=bnb_config,
         torch_dtype=torch.bfloat16,
         low_cpu_mem_usage=True,
     )
-    if adapter_dir is not None:        
+    if adapter_dir is not None:
         model = PeftModel.from_pretrained(
             model,
             adapter_dir,
             is_trainable=True,
-            low_cpu_mem_usage=True,
         )
 
         model.load_adapter(adapter_dir, adapter_name="reference")
@@ -142,8 +141,8 @@ def setup_dpo_trainer(
         gradient_accumulation_steps=4,
         output_dir=output_dir,
         max_prompt_length=512,
-        optim="adamw_8bit", 
-        warmup_ratio=0.1,  
+        optim="adamw_8bit",
+        warmup_ratio=0.1,
         learning_rate=5e-5,
         max_length=1024,
         bf16=True,
@@ -207,16 +206,17 @@ def main() -> None:
     torch.cuda.empty_cache()
     trainer.train()
 
-    trainer.save_model(output_dir) 
-
-    torch.cuda.empty_cache()
+    logging.info(f"Saving model to {output_dir} and pushing to {sanitized_model_name}")
     # reference adapter is only needed for training
     model.delete_adapter("reference")
-
-    #trainer.push_to_hub(sanitized_model_name)
+    
+    trainer.save_model(output_dir)
+    # trainer.push_to_hub(sanitized_model_name)
 
     # model = model.to(torch.float16)
+    # logging.info("Merging and unloading model")
     # model = model.merge_and_unload()
+    # logging.info(f"Saving model to {output_dir} and pushing it to {sanitized_model_name}")
     # model.save_pretrained(output_dir)
     # trainer.push_to_hub(sanitized_model_name)
 

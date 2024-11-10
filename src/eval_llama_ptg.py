@@ -251,8 +251,8 @@ def load_tokenizer(model_name: str) -> PreTrainedTokenizerBase:
         use_fast=True,
     )
 
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.pad_token_id = tokenizer.eos_token_id
 
     return tokenizer
 
@@ -608,8 +608,10 @@ def generate_and_evaluate(
 
     # Configure the BitsAndBytes config for loading models in 4-bit precision
     bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,  # Load in 4-bit precision
-        bnb_4bit_compute_dtype=torch.float16,  # Use bfloat16 for computations
+        load_in_4bit=True,
+        bnb_4bit_compute_dtype=torch.bfloat16,
+        bnb_4bit_use_double_quant=True,
+        bnb_4bit_quant_type="nf4",
     )
 
     # Loop over each model and adapter
@@ -618,7 +620,7 @@ def generate_and_evaluate(
         model = AutoModelForCausalLM.from_pretrained(
             model_name,
             quantization_config=bnb_config,
-            torch_dtype=torch.float16,
+            torch_dtype=torch.bfloat16,
             low_cpu_mem_usage=True,
             attn_implementation="flash_attention_2",
         )
