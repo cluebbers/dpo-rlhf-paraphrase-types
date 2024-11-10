@@ -19,6 +19,20 @@ TOP_10_PARAPHRASE_TYPES = [
     "synthetic/analytic substitution",
 ]
 
+FILTER_PARAPHRASE_TYPES = [
+    "addition/deletion",
+    "change of order",
+    "derivational changes",
+    "inflectional changes",
+    "punctuation changes",
+    "same polarity substitution (contextual)",
+    "semantic based",
+    "spelling changes",
+    "subordination and nesting changes",
+    "synthetic/analytic substitution",
+    "identity"
+]
+
 
 def login_to_huggingface(token_path=None):
     """
