@@ -52,7 +52,7 @@ def login_to_huggingface(token_path=None):
             hf_token = token_file.read().strip()
 
     # Login to the Hugging Face Hub
-    login(token=hf_token, add_to_git_credential=True)
+    login(token=hf_token, add_to_git_credential=True, new_session=False)
 
 
 def clean_text(text):
