@@ -13,26 +13,65 @@ Supervisor: Dominik Meier, Terry Ruas
 
 ## Setup
 
-tested with python=3.10.15 and requirements.txt
+```python
+conda create --name dpo_env \
+    python=3.11 \
+    pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
+conda activate dpo_env
+
+# Paraphrase Type Generation
+pip install transformers trl peft bitsandbytes nltk rouge scikit-learn
+# Paraphrase Type Detection
+pip install evaluate optuna
+```
+
+The used environment can be found in dpo_env.yml
 
 ## Run
 
-### Generate Prompts from APTY-Ranked dataset
+### Paraphrase Type Generation Training
 
-   ```bash
-   python src/generate_promps_apty_ranked.py
-   ```
+RLHF training on APTY
 
-### Training
+```python
+# Reward Training on APTY
+python3 src/reward.py
+# PPO Training
+python3 src/ppo.py
+```
 
-   ```bash
-   python src/dpo_llama_generation.py \
-   --model_name=meta-llama/Llama-2-7b-hf \
-   --adapter_dir=src/llama/llama-7b-etpc
-   ```
+DPO/IPO Training on APTY
 
-### Generate Paraphrases
+```python
+# loss_type=sigmoid for DPO
+# loss_type=ipo for IPO
+python3 src/dpo_llama_ptg.py \
+--model_name=meta-llama/Llama-3.1-8B \
+--adapter_dir=cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc \
+--loss_type=sigmoid
+```
 
-   ```bash
-   python src/generation.py
-   ```
+Evaluation of Base Model, SFT/ETPC, DPO/APTY, IPO/APTY
+
+```python
+python3 src/eval_llama_ptg.py \
+--model_name=meta-llama/Llama-3.1-8B \
+--etpc_dir=cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc \
+--dpo_dir=out/gen-models/Llama-3.1-8B-paraphrase-type-generation-apty-sigmoid \
+--ipo_dir=cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-ipo
+```
+
+### Paraphrase Type Detection Training
+
+```python
+# Paraphrase Detection on QQP
+python3 src/sft_pd.py
+# Paraphrase Type Detection on ETPC
+python3 src/sft_ptd.py
+```
+
+### Plots
+
+```python
+notebooks/plots.ipynb
+```
