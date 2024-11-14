@@ -1,82 +1,12 @@
 import argparse
 import os
 
-import pandas as pd
 import torch
-from datasets import Dataset, load_dataset
-from sklearn.model_selection import train_test_split
-from tqdm import tqdm
+from datasets import load_dataset
 from transformers import AutoTokenizer, BartForConditionalGeneration
 from trl import DPOConfig, DPOTrainer
 
-
-def modify_last_character(text: str) -> str:
-    """
-    Modify the last character of a string based on specific rules.
-
-    Args:
-        text (str): The text to modify.
-
-    Returns:
-        str: The modified text.
-    """
-    if text.endswith('"'):
-        text = text[:-1]  # Remove the last double quote
-    elif text[-1].isalpha():
-        text += "."  # Add a '.' if the last character is a letter
-
-    return text
-
-
-def load_and_preprocess_apty_dataset(dataset):
-    """
-    Load and preprocess the APTY-ranked dataset into Hugging Face Dataset format for DPOTrainer.
-
-    Args:
-        dataset: The raw dataset object containing 'train' data.
-
-    Returns:
-        train_dataset (Dataset): Training dataset as Hugging Face Dataset object.
-        test_dataset (Dataset): Validation dataset as Hugging Face Dataset object.
-    """
-
-    # Convert dataset into a pandas DataFrame
-    data = pd.DataFrame(dataset["train"])
-
-    # Normalize the 'meta' column to create separate columns for 'id', 'annotators', and 'APT'
-    meta_df = pd.json_normalize(data["meta"])
-    data = data.drop(columns=["meta"]).reset_index(drop=True)
-    data = pd.concat([data, meta_df], axis=1)
-
-    # Extract the text from the nested dictionaries for 'chosen' and 'rejected'
-    data["original"] = data["original"].apply(
-        lambda x: str(x["text"]) if isinstance(x, dict) else str(x)
-    )
-    data["chosen"] = data["chosen"].apply(
-        lambda x: str(x["text"]) if isinstance(x, dict) else str(x)
-    )
-    data["rejected"] = data["rejected"].apply(
-        lambda x: str(x["text"]) if isinstance(x, dict) else str(x)
-    )
-
-    # Strip whitespace
-    data["original"] = data["original"].str.strip()
-    data["chosen"] = data["chosen"].str.strip()
-    data["rejected"] = data["rejected"].str.strip()
-
-    # Rename columns to match DPOTrainer's expected format
-    data = data.rename(columns={"original": "prompt"})
-
-    # Split the dataset into training and test sets
-    train_df, test_df = train_test_split(
-        data, test_size=0.3, stratify=data["APT"], random_state=42
-    )
-
-    # Convert the pandas DataFrames to Hugging Face Dataset objects
-    train_dataset = Dataset.from_pandas(train_df)
-    test_dataset = Dataset.from_pandas(test_df)
-
-    return train_dataset, test_dataset
+from common import load_and_preprocess_apty_dataset
 
 
 def parse_args():
