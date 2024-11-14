@@ -1,8 +1,9 @@
+#!/usr/bin/env python3
 """
 python3 src/dpo_llama_ptg.py \
-    --model_name=meta-llama/Llama-2-7b-hf \
-    --adapter_dir=out/gen-models/llama-2-7b-etpc \
-    --loss_type=sigmoid
+    --model_name=meta-llama/Llama-3.1-8B \
+    --adapter_dir=out/gen-models/Llama-3.1-8B-etpc \
+    --loss_type=ipo
 """
 
 import argparse
@@ -45,7 +46,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--adapter_dir",
         type=str,
-        default="cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc",
+        default="out/gen-models/Llama-3.1-8B-etpc",
         help="Name of the PEFT adapter",
     )
     parser.add_argument(
@@ -117,51 +118,6 @@ def load_model_and_tokenizer(
     return model, tokenizer
 
 
-def setup_dpo_trainer(
-    model, tokenizer, train_dataset, eval_dataset, output_dir, loss_type
-):
-    """
-    Set up the DPO trainer with the given model, tokenizer, training dataset, evaluation dataset, output directory, and loss type.
-
-    Args:
-        model (PreTrainedModel): The model to train.
-        tokenizer (PreTrainedTokenizerBase): The tokenizer to use.
-        train_dataset (DatasetDict): The training dataset.
-        eval_dataset (DatasetDict): The evaluation dataset.
-        output_dir (str): The directory to save the model to.
-        loss_type (str): The type of loss to use. Can be either 'sigmoid' or 'ipo'.
-
-    Returns:
-        DPOTrainer: The set up DPO trainer.
-    """
-
-    training_args = DPOConfig(
-        eval_strategy="epoch",
-        per_device_train_batch_size=2,
-        gradient_accumulation_steps=4,
-        output_dir=output_dir,
-        max_prompt_length=512,
-        optim="adamw_8bit",
-        warmup_ratio=0.1,
-        learning_rate=5e-5,
-        max_length=1024,
-        bf16=True,
-        remove_unused_columns=False,
-        loss_type=loss_type,  # The type of loss to use
-        save_strategy="epoch",
-        load_best_model_at_end=True,
-        save_total_limit=1,
-    )
-
-    return DPOTrainer(
-        model=model,
-        args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
-        tokenizer=tokenizer,
-    )
-
-
 def main() -> None:
     """Main function to run the DPO training process.
 
@@ -176,7 +132,7 @@ def main() -> None:
     output_dir = f"./out/gen-models/{sanitized_model_name}"
     os.makedirs(output_dir, exist_ok=True)
 
-    login_to_huggingface("token_file.txt")
+    login_to_huggingface()
 
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -199,26 +155,68 @@ def main() -> None:
     train_dataset = datasets["train"]
     eval_dataset = datasets["eval"]
 
-    trainer = setup_dpo_trainer(
-        model, tokenizer, train_dataset, eval_dataset, output_dir, args.loss_type
+    common_training_args = {
+        "ref_adapter_name": "reference",
+        "model_adapter_name": "default",
+        "remove_unused_columns": False,
+        "eval_strategy": "epoch",
+        "load_best_model_at_end": True,
+        "metric_for_best_model": "eval_rewards/accuracies",
+        "greater_is_better": True,
+        "save_strategy": "epoch",
+        "logging_strategy": "epoch",
+        "output_dir": output_dir,
+        "max_length": 1024,
+        "max_prompt_length": 512,
+        "bf16": True,
+        "report_to": "tensorboard",
+        "optim": "adamw_8bit",
+        "per_device_train_batch_size": 1,
+        "gradient_accumulation_steps": 8,
+        "beta": 0.2,
+    }
+
+    if args.loss_type == "sigmoid":
+        specific_training_args = {
+            "num_train_epochs": 3,
+            "warmup_ratio": 0.3,
+            "weight_decay": 2e-1,
+            "learning_rate": 6e-5,
+            "lr_scheduler_type": "linear",
+        }
+    else:  # IPO
+        specific_training_args = {
+            "num_train_epochs": 3,
+            "warmup_ratio": 0.2,
+            "weight_decay": 0.02,
+            "learning_rate": 5e-6,
+            "lr_scheduler_type": "reduce_lr_on_plateau",
+        }
+
+    training_args = DPOConfig(
+        loss_type=args.loss_type,
+        **common_training_args,
+        **specific_training_args,
+    )
+
+    trainer = DPOTrainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        tokenizer=tokenizer,
     )
 
     torch.cuda.empty_cache()
     trainer.train()
 
-    logging.info(f"Saving model to {output_dir} and pushing to {sanitized_model_name}")
+    logging.info(f"Saving model to {output_dir}")
     # reference adapter is only needed for training
     model.delete_adapter("reference")
-    
-    trainer.save_model(output_dir)
-    # trainer.push_to_hub(sanitized_model_name)
 
-    # model = model.to(torch.float16)
-    # logging.info("Merging and unloading model")
-    # model = model.merge_and_unload()
-    # logging.info(f"Saving model to {output_dir} and pushing it to {sanitized_model_name}")
-    # model.save_pretrained(output_dir)
-    # trainer.push_to_hub(sanitized_model_name)
+    trainer.save_model(output_dir)
+    logging.info(f"Pushing model to {sanitized_model_name}")
+    trainer.push_to_hub(sanitized_model_name)
 
 
 if __name__ == "__main__":
