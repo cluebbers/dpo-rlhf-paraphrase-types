@@ -139,7 +139,8 @@ def main():
         padding_side="left",
     )
 
-    tokenizer.pad_token = "<|finetune_right_pad_id|>"
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.pad_token_id = tokenizer.eos_token_id
 
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -151,10 +152,10 @@ def main():
         quantization_config=bnb_config,
         torch_dtype=torch.bfloat16,
         low_cpu_mem_usage=True,
-        attn_implementation="flash_attention_2",
     )
 
     policy.config.pad_token_id = tokenizer.pad_token_id
+    
     if policy is None:
         raise ValueError("Failed to load policy model")
     
@@ -163,7 +164,6 @@ def main():
         quantization_config=bnb_config,
         torch_dtype=torch.bfloat16,
         low_cpu_mem_usage=True,
-        attn_implementation="flash_attention_2",
     )
 
     ref_policy.config.pad_token_id = tokenizer.pad_token_id
@@ -175,7 +175,6 @@ def main():
         quantization_config=bnb_config,
         torch_dtype=torch.bfloat16,
         low_cpu_mem_usage=True,
-        attn_implementation="flash_attention_2",
         num_labels=1,
     )
 
