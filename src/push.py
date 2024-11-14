@@ -71,7 +71,7 @@ def load_model_and_tokenizer(
     logging.info(f"Loading base model {model_name}")
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        quantization_config=bnb_config,
+        #quantization_config=bnb_config,
         torch_dtype=torch.float16,
         low_cpu_mem_usage=True,
     )
