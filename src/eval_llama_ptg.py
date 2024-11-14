@@ -1,18 +1,4 @@
-"""
-Llama-2-7b
-python3 src/eval_llama_ptg.py \
---model_name meta-llama/Llama-2-7b-hf \
---etpc_dir out/gen-models/llama-2-7b-etpc \
---dpo_dir out/gen-models/Llama-2-7b-hf-paraphrase-type-generation-etpc-apty-sigmoid-unsloth \
---ipo_dir out/gen-models/Llama-2-7b-hf-paraphrase-type-generation-etpc-apty-ipo-unsloth
-
-Llama-3.1-8B
-python3 src/eval_llama_ptg.py \
---model_name meta-llama/Llama-3.1-8B \
---etpc_dir cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc \
---dpo_dir out/gen-models/Llama-3.1-8B-paraphrase-type-generation-apty-sigmoid \
---ipo_dir out/gen-models/Llama-3.1-8B-paraphrase-type-generation-apty-ipo
-"""
+#!/usr/bin/env python3
 
 import argparse
 import json
@@ -69,19 +55,19 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--etpc_dir",
         type=str,
-        default="out/gen-models/llama-3.1-8b-etpc",
+        default="cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc",
         help="ETPC adapter directory.",
     )
     parser.add_argument(
         "--dpo_dir",
         type=str,
-        default="out/gen-models/dpo_out-gen-models-llama-3.1-8b-etpc_sigmoid",
+        default="cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-sigmoid",
         help="DPO adapter directory.",
     )
     parser.add_argument(
         "--ipo_dir",
         type=str,
-        default="out/gen-models/dpo_out-gen-models-llama-3.1-8b-etpc_ipo",
+        default="cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-ipo",
         help="IPO adapter directory.",
     )
 
@@ -622,7 +608,7 @@ def generate_and_evaluate(
             quantization_config=bnb_config,
             torch_dtype=torch.bfloat16,
             low_cpu_mem_usage=True,
-            attn_implementation="flash_attention_2",
+            # attn_implementation="flash_attention_2",
         )
         # Load the model and adapter
         if adapter_dir:
@@ -712,11 +698,11 @@ def main() -> None:
     """
     args = parse_arguments()
 
-    login_to_huggingface("token_file.txt")
+    login_to_huggingface()
 
     batch_size: int = 10
-    num_apty: int = 10  # per type
-    num_etpc: int = 100
+    num_apty: int = 100  # per type
+    num_etpc: int = 2000
 
     output_csv: str = f"out/gen-models/eval_{args.model_name.split('/')[-1]}.csv"
     output_json: str = (
@@ -732,9 +718,8 @@ def main() -> None:
 
     # Load the ETPC dataset and filter out sentences without paraphrases
     etpc_data = (
-        load_dataset("jpwahle/etpc", split="train").filter(
-            lambda x: x["etpc_label"] == 1
-        )
+        load_dataset("jpwahle/etpc", split="train")
+        .filter(lambda x: x["etpc_label"] == 1)
         .filter(
             lambda x: all(
                 ptype.lower() in FILTER_PARAPHRASE_TYPES
