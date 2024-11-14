@@ -8,10 +8,16 @@ python3 src/push.py \
     --model_name="meta-llama/Llama-3.1-8B" \
     --adapter_dir="cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-ipo" \
     --output_dir="out/gen-models/Llama-3.1-8B-paraphrase-type-generation-apty-ipo"
+    
+python3 src/push.py \
+    --model_name="meta-llama/Llama-3.1-8B" \
+    --adapter_dir="cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc" \
+    --output_dir="out/gen-models/Llama-3.1-8B-etpc"
 """
 
 import argparse
 import logging
+import os
 from typing import Tuple
 
 import torch
@@ -19,12 +25,10 @@ from peft import PeftModel
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
-    BitsAndBytesConfig,
     PreTrainedModel,
     PreTrainedTokenizerBase,
 )
-
-from common import login_to_huggingface
+from huggingface_hub import login
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Merge adapter with base model and push to hub")
@@ -53,12 +57,6 @@ def parse_arguments() -> argparse.Namespace:
 def load_model_and_tokenizer(
     model_name: str, adapter_dir: str, device: torch.device
 ) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
-    bnb_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype=torch.float16,
-        bnb_4bit_use_double_quant=True,
-        bnb_4bit_quant_type="nf4",
-    )
 
     tokenizer = AutoTokenizer.from_pretrained(
         model_name,
@@ -71,9 +69,7 @@ def load_model_and_tokenizer(
     logging.info(f"Loading base model {model_name}")
     model = AutoModelForCausalLM.from_pretrained(
         model_name,
-        #quantization_config=bnb_config,
-        torch_dtype=torch.float16,
-        low_cpu_mem_usage=True,
+        torch_dtype="auto",
     )
     logging.info(f"Loading PEFT adapter from {adapter_dir}")
     model = PeftModel.from_pretrained(
@@ -90,7 +86,8 @@ def main() -> None:
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
     )
     args = parse_arguments()
-    login_to_huggingface()
+    hf_token = os.getenv("HF_TOKEN")
+    login(token=hf_token, add_to_git_credential=True, new_session=False)
 
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -104,7 +101,6 @@ def main() -> None:
     )
 
     logging.info("Merging adapter with base model")
-    model = model.to(torch.float16)
     model = model.merge_and_unload()
 
 
