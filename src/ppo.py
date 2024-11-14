@@ -5,7 +5,6 @@ from typing import Any, Dict, List
 import torch
 from datasets import Dataset
 from huggingface_hub import login
-from peft import LoraConfig, TaskType, get_peft_model
 from transformers import (
     AutoModelForCausalLM,
     AutoModelForSequenceClassification,
@@ -13,7 +12,8 @@ from transformers import (
     BitsAndBytesConfig,
 )
 from trl import PPOv2Config, PPOv2Trainer
-    
+
+
 def login_to_huggingface(token_path=None):
     """
     Login to the Hugging Face Hub using either the `HF_TOKEN` environment variable or a token file.
@@ -155,10 +155,10 @@ def main():
     )
 
     policy.config.pad_token_id = tokenizer.pad_token_id
-    
+
     if policy is None:
         raise ValueError("Failed to load policy model")
-    
+
     ref_policy = AutoModelForCausalLM.from_pretrained(
         policy_name,
         quantization_config=bnb_config,

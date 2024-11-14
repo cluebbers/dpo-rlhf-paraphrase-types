@@ -1,6 +1,5 @@
 import argparse
 import csv
-import pickle
 import random
 from collections import defaultdict
 from datetime import datetime
@@ -12,12 +11,22 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from datasets import Dataset, load_dataset
-from sklearn.metrics import (accuracy_score, classification_report, f1_score,
-                             precision_score, recall_score)
-from transformers import (AutoConfig, AutoModelForSequenceClassification,
-                          AutoTokenizer, DataCollatorWithPadding,
-                          EarlyStoppingCallback, PreTrainedTokenizerBase,
-                          Trainer, TrainingArguments)
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    f1_score,
+    precision_score,
+    recall_score,
+)
+from transformers import (
+    AutoConfig,
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+    DataCollatorWithPadding,
+    PreTrainedTokenizerBase,
+    Trainer,
+    TrainingArguments,
+)
 
 TOP_10_PARAPHRASE_TYPES = [
     "addition/deletion",
