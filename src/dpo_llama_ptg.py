@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""
-python3 src/dpo_llama_ptg.py \
-    --model_name=meta-llama/Llama-3.1-8B \
-    --adapter_dir=out/gen-models/Llama-3.1-8B-etpc \
-    --loss_type=ipo
-"""
 
 import argparse
 import logging
