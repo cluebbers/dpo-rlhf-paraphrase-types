@@ -153,38 +153,42 @@ def main() -> None:
         "ref_adapter_name": "reference",
         "model_adapter_name": "default",
         "remove_unused_columns": False,
-        "eval_strategy": "epoch",
+        
         "load_best_model_at_end": True,
         "metric_for_best_model": "eval_rewards/accuracies",
         "greater_is_better": True,
         "save_strategy": "epoch",
-        "logging_strategy": "epoch",
+        
         "output_dir": output_dir,
         "max_length": 1024,
         "max_prompt_length": 512,
         "bf16": True,
         "report_to": "tensorboard",
+        "logging_strategy": "epoch",
+        "eval_strategy": "epoch",
         "optim": "adamw_8bit",
         "per_device_train_batch_size": 1,
         "gradient_accumulation_steps": 8,
-        "beta": 0.2,
     }
 
     if args.loss_type == "sigmoid":
         specific_training_args = {
-            "num_train_epochs": 3,
-            "warmup_ratio": 0.3,
-            "weight_decay": 2e-1,
-            "learning_rate": 6e-5,
-            "lr_scheduler_type": "linear",
+            "num_train_epochs": 5,
+            "warmup_ratio": 0,
+            "weight_decay": 4e-1,  
+            "learning_rate": 1e-6, 
+            "lr_scheduler_type": "cosine", 
+            "beta": 0.1,
+            "max_grad_norm": 200.0 
         }
     else:  # IPO
         specific_training_args = {
             "num_train_epochs": 3,
             "warmup_ratio": 0.2,
             "weight_decay": 0.02,
-            "learning_rate": 5e-6,
+            "learning_rate": 5e-6, 
             "lr_scheduler_type": "reduce_lr_on_plateau",
+            "beta": 0.2,
         }
 
     training_args = DPOConfig(
