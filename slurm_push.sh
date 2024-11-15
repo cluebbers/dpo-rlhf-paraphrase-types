@@ -41,7 +41,7 @@ python3 src/push.py --model_name $1 --adapter_dir $2 --output_dir $3
 
 # Done
 # sbatch slurm_push.sh meta-llama/Llama-3.1-8B cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc out/gen-models/Llama-3.1-8B-etpc
+# sbatch slurm_push.sh meta-llama/Llama-3.1-8B cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-ipo out/gen-models/Llama-3.1-8B-paraphrase-type-generation-apty-ipo
+# sbatch slurm_push.sh meta-llama/Llama-3.1-8B cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-sigmoid out/gen-models/Llama-3.1-8B-paraphrase-type-generation-apty-sigmoid
 
 #TODO
-# sbatch slurm_push.sh meta-llama/Llama-3.1-8B cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-sigmoid out/gen-models/Llama-3.1-8B-paraphrase-type-generation-apty-sigmoid
-# sbatch slurm_push.sh meta-llama/Llama-3.1-8B cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-ipo out/gen-models/Llama-3.1-8B-paraphrase-type-generation-apty-ipo
