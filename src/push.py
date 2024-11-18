@@ -18,15 +18,12 @@ python3 src/push.py \
 import argparse
 import logging
 import os
-from typing import Tuple
 
 import torch
 from peft import PeftModel
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
-    PreTrainedModel,
-    PreTrainedTokenizerBase,
 )
 from huggingface_hub import login
 
@@ -54,32 +51,6 @@ def parse_arguments() -> argparse.Namespace:
     args = parser.parse_args()
     return args
 
-def load_model_and_tokenizer(
-    model_name: str, adapter_dir: str, device: torch.device
-) -> Tuple[PreTrainedModel, PreTrainedTokenizerBase]:
-
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_name,
-        padding_side="left",
-        padding=True,
-    )
-    tokenizer.pad_token = tokenizer.eos_token
-    tokenizer.pad_token_id = tokenizer.eos_token_id
-
-    logging.info(f"Loading base model {model_name}")
-    model = AutoModelForCausalLM.from_pretrained(
-        model_name,
-        torch_dtype="auto",
-    )
-    logging.info(f"Loading PEFT adapter from {adapter_dir}")
-    model = PeftModel.from_pretrained(
-        model,
-        adapter_dir,
-        is_trainable=False,
-    )
-    model.config.pad_token_id = tokenizer.pad_token_id
-    model = model.to(device)
-    return model, tokenizer
 
 def main() -> None:
     logging.basicConfig(
@@ -89,23 +60,39 @@ def main() -> None:
     hf_token = os.getenv("HF_TOKEN")
     login(token=hf_token, add_to_git_credential=True, new_session=False)
 
-    if torch.cuda.is_available():
-        device = torch.device("cuda")
-        logging.info(f"Using CUDA device: {torch.cuda.get_device_name(0)}")
-    else:
-        device = torch.device("cpu")
-        logging.info("Using CPU device")
-
-    model, tokenizer = load_model_and_tokenizer(
-        args.model_name, args.adapter_dir, device
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.model_name,
+        padding_side="left",
+        padding=True,
     )
+    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.pad_token_id = tokenizer.eos_token_id
+
+    logging.info(f"Loading base model {args.model_name}")
+    model = AutoModelForCausalLM.from_pretrained(
+        args.model_name,
+        torch_dtype=torch.bfloat16,
+    )
+    logging.info(f"Loading PEFT adapter from {args.adapter_dir}")
+    model = PeftModel.from_pretrained(
+        model,
+        args.adapter_dir,
+        is_trainable=False,
+    )
+    model.config.pad_token_id = tokenizer.pad_token_id
+
 
     logging.info("Merging adapter with base model")
     model = model.merge_and_unload()
+    
+    model = model.to(torch.bfloat16)
 
 
     logging.info(f"Saving merged model to {args.output_dir}")
-    model.save_pretrained(args.output_dir)
+    model.save_pretrained(args.output_dir,
+                          safe_serialization=True,
+                          torch_dtype=torch.bfloat16)
+    
     tokenizer.save_pretrained(args.output_dir)
 
     logging.info(f"Pushing merged model to Hugging Face Hub at {args.adapter_dir}")
