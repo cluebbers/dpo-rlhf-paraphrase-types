@@ -1,7 +1,7 @@
 #!/bin/sh
-#SBATCH --job-name=dpo_llama_ptg
+#SBATCH --job-name=test
 #SBATCH --account=luebbers_masters
-#SBATCH --partition=gpu
+#SBATCH --partition=scc-a100
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
