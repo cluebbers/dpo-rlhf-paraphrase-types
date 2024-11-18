@@ -73,6 +73,7 @@ def main() -> None:
         args.model_name,
         torch_dtype=torch.bfloat16,
     )
+    
     logging.info(f"Loading PEFT adapter from {args.adapter_dir}")
     model = PeftModel.from_pretrained(
         model,
@@ -81,12 +82,12 @@ def main() -> None:
     )
     model.config.pad_token_id = tokenizer.pad_token_id
 
-
     logging.info("Merging adapter with base model")
     model = model.merge_and_unload()
     
-    model = model.to(torch.bfloat16)
-
+    for name, param in model.named_parameters():
+        if torch.isnan(param).any():
+            raise ValueError(f"NaN values detected in {name}")
 
     logging.info(f"Saving merged model to {args.output_dir}")
     model.save_pretrained(args.output_dir,
