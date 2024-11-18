@@ -4,6 +4,8 @@ test for Open LLM Leaderboard
 import logging
 from transformers import AutoConfig, AutoModel, AutoTokenizer
 
+logging.basicConfig(level=logging.INFO)
+
 model_etpc ="cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc"
 model_dpo = "cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-sigmoid"
 model_ipo = "cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-ipo"

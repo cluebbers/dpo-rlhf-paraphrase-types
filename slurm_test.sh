@@ -17,7 +17,7 @@ module load cuda
 source activate dpo_env
 
 export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/dpo_env/lib/python3.10/site-packages:$PYTHONPATH
-export HF_HOME=/scratch-scc/users/u12246/huggingface_cache
+#export HF_HOME=/scratch-scc/users/u12246/huggingface_cache
 export TOKENIZERS_PARALLELISM=false
 
 echo "Submitting job with sbatch from directory: ${SLURM_SUBMIT_DIR}"
