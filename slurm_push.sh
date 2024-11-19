@@ -1,11 +1,11 @@
 #!/bin/sh
 #SBATCH --job-name=push
 #SBATCH --account=luebbers_masters
-#SBATCH --partition=scc-a100
+#SBATCH --partition=gpu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --gpus=1
+#SBATCH --gpus=V100:1
 #SBATCH --time=12:00:00
 #SBATCH --mail-type=all
 #SBATCH --mail-user=c.luebbers@stud.uni-goettingen.de 
@@ -18,7 +18,7 @@ source activate dpo_env
 
 export PYTHONPATH=/home/uni08/hpc/c.luebbers/u12246/.conda/envs/dpo_env/lib/python3.10/site-packages:$PYTHONPATH
 # scratch-scc not availableon scc-a100
-#export HF_HOME=/scratch-scc/users/u12246/huggingface_cache
+export HF_HOME=/scratch-scc/users/u12246/huggingface_cache
 export TOKENIZERS_PARALLELISM=false
 export HF_TOKEN=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
 
