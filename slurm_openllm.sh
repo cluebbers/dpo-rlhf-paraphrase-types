@@ -34,7 +34,7 @@ python -c "import torch; print('PyTorch version:', torch.__version__)"
 echo "Current environment: $(which python)"
 echo $PATH
 
-python3 src/openllm.pyp --pretrained=$1 --output_path=$2
+python3 src/openllm.py --pretrained=$1 --output_path=$2
 
 # ToDo
 # sbatch slurm_openllm.sh cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc out/gen-models/openllm/etpc
