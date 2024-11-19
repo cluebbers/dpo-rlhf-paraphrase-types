@@ -1,16 +1,16 @@
 import subprocess
 import argparse
 
+from huggingface_hub import login
+
 def run_lm_eval(pretrained, output_path):
     command = [
         "lm-eval",
-        "--model_args",
-        f"pretrained={pretrained},dtype='bfloat16'",
+        f"--model_args",
+        f"pretrained={pretrained},dtype=bfloat16",
         "--tasks=leaderboard",
         "--batch_size=auto",
-        f"--output_path={output_path}"
-        "--apply_chat_template",
-        "--fewshot_as_multiturn",
+        f"--output_path={output_path}",
     ]
     result = subprocess.run(command, capture_output=True, text=True)
     print(result.stdout)
@@ -22,4 +22,5 @@ if __name__ == "__main__":
     parser.add_argument("--output_path", type=str, required=True, help="Output path for results")
 
     args = parser.parse_args()
+    login(new_session=False)
     run_lm_eval(args.pretrained, args.output_path)
