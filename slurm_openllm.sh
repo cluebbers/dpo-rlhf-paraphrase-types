@@ -1,12 +1,12 @@
 #!/bin/sh
 #SBATCH --job-name=openllm
 #SBATCH --account=luebbers_masters
-#SBATCH --partition=gpu
+#SBATCH --partition=scc-a100
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --gpus=V100:1
-#SBATCH --time=24:00:00
+#SBATCH --gpus=1
+#SBATCH --time=48:00:00
 #SBATCH --mail-type=all
 #SBATCH --mail-user=c.luebbers@stud.uni-goettingen.de 
 #SBATCH --output=./slurm_files/slurm-%x-%j.out
@@ -14,10 +14,13 @@
 
 module load miniforge3
 module load cuda
-source activate /scratch-scc/users/u12246/environments/openllm_env
+source activate scc_eval_env
+# source activate /scratch-scc/users/u12246/environments/openllm_env
+# source activate /scratch-scc/users/u12246/eleuther/eval_env
 
-export PYTHONPATH=/scratch-scc/users/u12246/environments/openllm_env/lib/python3.11/site-packages:$PYTHONPATH
-export HF_HOME=/scratch-scc/users/u12246/huggingface_cache
+# export PYTHONPATH=/scratch-scc/users/u12246/environments/openllm_env/lib/python3.11/site-packages:$PYTHONPATH
+# export PYTHONPATH=/scratch-scc/users/u12246/eleuther/eval_env/lib/python3.11/site-packages:$PYTHONPATH 
+# export HF_HOME=/scratch-scc/users/u12246/huggingface_cache
 export TOKENIZERS_PARALLELISM=false
 
 echo "Submitting job with sbatch from directory: ${SLURM_SUBMIT_DIR}"
@@ -37,4 +40,7 @@ echo $PATH
 python3 src/openllm.py --pretrained=$1 --output_path=$2
 
 # ToDo
+# sbatch slurm_openllm.sh cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc out/gen-models/openllm/etpc
+# sbatch slurm_openllm.sh cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-sigmoid out/gen-models/openllm/dpo
+# sbatch slurm_openllm.sh cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-ipo out/gen-models/openllm/ipo
 # sbatch slurm_openllm.sh cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc out/gen-models/openllm/etpc
