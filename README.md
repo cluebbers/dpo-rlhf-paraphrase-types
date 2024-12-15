@@ -85,11 +85,14 @@ python3 src/eval_llama_ptg.py \
 --ipo_dir=cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-ipo
 ```
 
+For Open LLM Leaderboard evaluation, [submit your model](https://huggingface.co/spaces/open-llm-leaderboard/open_llm_leaderboard#/).
+
 Further evaluation is done in the jupyter notebook. All plots and tables from the project are generated there.
 
 ```python
 notebooks/plots.ipynb
 ```
+
 
 ## Pre-trained models
 
@@ -179,4 +182,5 @@ url={https://openreview.net/forum?id=XPZIaotutsD}
 ## Licence
 
 Licensed under the [Apache 2.0](LICENSE) license.
+
 Llama-3.1 models are licensed under the [LLaMA 3.1 Community License Agreement](https://github.com/meta-llama/llama-models/blob/main/models/llama3_1/LICENSE)
