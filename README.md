@@ -19,6 +19,12 @@ pip install -r requirements.txt
 This project uses huggingface datasets and models.
 Llama models are gated and you need to sign up with Huggingface and accept the community licence agreement at [meta-llama/Llama-3.1-8B](https://huggingface.co/meta-llama/Llama-3.1-8B).
 
+Datasets:
+
+- [ETPC Dataset](https://huggingface.co/datasets/jpwahle/etpc)
+- [APTY-ranked Dataset](https://huggingface.co/datasets/worta/apty)
+- base sentences for evaluation can be found at [generate_apt_paraphrases/Sentences](https://github.com/worta/generate_apt_paraphrases)
+
 ## Training
 
 ### Paraphrase Type Generation
@@ -87,8 +93,6 @@ notebooks/plots.ipynb
 
 ## Pre-trained models
 
-- [ETPC Dataset](https://huggingface.co/datasets/jpwahle/etpc)
-- [APTY-ranked Dataset](https://huggingface.co/datasets/worta/apty)
 - [Llama-3.1-8B](https://huggingface.co/meta-llama/Llama-3.1-8B)
 - [SFT/ETPC](https://huggingface.co/cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc)
 - [Reward/APTY](https://huggingface.co/cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc-apty-reward)
@@ -171,7 +175,6 @@ year={2021},
 url={https://openreview.net/forum?id=XPZIaotutsD}
 }
 ```
-
 
 ## Licence
 
