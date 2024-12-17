@@ -40,7 +40,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--adapter_dir",
         type=str,
-        default="out/gen-models/Llama-3.1-8B-etpc",
+        default="cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc",
         help="Name of the PEFT adapter",
     )
     parser.add_argument(
@@ -101,9 +101,10 @@ def load_model_and_tokenizer(
             model,
             adapter_dir,
             is_trainable=True,
+            subfolder="adapter",
         )
 
-        model.load_adapter(adapter_dir, adapter_name="reference")
+        model.load_adapter(adapter_dir, adapter_name="reference", subfolder="adapter")
 
     model.config.pad_token_id = tokenizer.pad_token_id
 
@@ -214,7 +215,7 @@ def main() -> None:
 
     trainer.save_model(output_dir)
     logging.info(f"Pushing model to {sanitized_model_name}")
-    trainer.push_to_hub(sanitized_model_name)
+    # trainer.push_to_hub(sanitized_model_name)
 
 
 if __name__ == "__main__":
