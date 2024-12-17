@@ -76,7 +76,7 @@ def main() -> None:
     Returns:
         None
     """
-    login_to_huggingface("token_file.txt")
+    login_to_huggingface()
 
     torch.cuda.empty_cache()
 
@@ -96,10 +96,8 @@ def main() -> None:
     )
 
     # 2. Get original PEFT config but modify for classification
-    peft_config = PeftConfig.from_pretrained(adapter_name)
+    peft_config = PeftConfig.from_pretrained(adapter_name,subfolder="adapter")
     peft_config.task_type = TaskType.SEQ_CLS
-
-    # def model_init(trial: Optional[optuna.trial.Trial] = None) -> PreTrainedModel:
 
     torch.cuda.empty_cache()
     logging.info("Initializing model...")
@@ -109,13 +107,12 @@ def main() -> None:
         quantization_config=bnb_config,
         low_cpu_mem_usage=True,
         torch_dtype=torch.bfloat16,
-        attn_implementation="flash_attention_2",
         ignore_mismatched_sizes=True,
         num_labels=1,
     )
 
     # 3. Create new PEFT model with classification config
-    model = PeftModel.from_pretrained(model, adapter_name, config=peft_config)
+    model = PeftModel.from_pretrained(model, adapter_name, config=peft_config, subfolder="adapter")
 
     model.config.pad_token_id = tokenizer.pad_token_id
 
@@ -145,7 +142,7 @@ def main() -> None:
     trainer = RewardTrainer(
         model=model,
         args=training_args,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
     )
@@ -154,7 +151,7 @@ def main() -> None:
 
     trainer.train()
 
-    trainer.push_to_hub(f"{adapter_name.split('/')[-1]}-apty-reward")
+    # trainer.push_to_hub(f"{adapter_name.split('/')[-1]}-apty-reward")
 
 
 if __name__ == "__main__":
