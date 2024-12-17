@@ -4,35 +4,15 @@ from typing import Any, Dict, List
 
 import torch
 from datasets import Dataset
-from huggingface_hub import login
 from transformers import (
     AutoModelForCausalLM,
     AutoModelForSequenceClassification,
     AutoTokenizer,
     BitsAndBytesConfig,
 )
-from trl import PPOv2Config, PPOv2Trainer
+from trl import PPOConfig, PPOTrainer
 
-
-def login_to_huggingface(token_path=None):
-    """
-    Login to the Hugging Face Hub using either the `HF_TOKEN` environment variable or a token file.
-
-    Args:
-        token_path (str, optional): Path to the file containing the Hugging Face token.
-
-    Returns:
-        None
-    """
-    # Check if the HF_TOKEN environment variable is set
-    hf_token = os.getenv("HF_TOKEN")
-    if not hf_token and token_path:
-        # If not, read the token from the file
-        with open(token_path, "r") as token_file:
-            hf_token = token_file.read().strip()
-
-    # Login to the Hugging Face Hub
-    login(token=hf_token, add_to_git_credential=True)
+from common import login_to_huggingface
 
 
 def read_sentences_by_type(
@@ -121,7 +101,7 @@ def main():
         "cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc-apty-reward"
     )
 
-    login_to_huggingface("token_file.txt")
+    login_to_huggingface()
 
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -192,18 +172,18 @@ def main():
 
     torch.cuda.empty_cache()
 
-    training_args = PPOv2Config(
+    training_args = PPOConfig(
         seed=42,
         batch_size=batch_size,
         mini_batch_size=mini_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
-        output_dir="out/gen-models/Llama-3.1-8B-paraphrase-type-generation-etpc-apty-ppo",
+        output_dir="./out/gen-models/Llama-3.1-8B-paraphrase-type-generation-etpc-apty-ppo",
         save_total_limit=1,
     )
 
-    trainer = PPOv2Trainer(
+    trainer = PPOTrainer(
         config=training_args,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         policy=policy,
         ref_policy=ref_policy,
         reward_model=reward_model,
@@ -214,7 +194,7 @@ def main():
 
     trainer.train()
 
-    trainer.push_to_hub("Llama-3.1-8B-paraphrase-type-generation-etpc-apty-ppo")
+    # trainer.push_to_hub("Llama-3.1-8B-paraphrase-type-generation-etpc-apty-ppo")
 
 
 if __name__ == "__main__":
