@@ -25,9 +25,7 @@ metrics = {
 }
 
 
-def tokenize_examples(
-    examples: Dict[str, List[str]], tokenizer: PreTrainedTokenizerBase
-) -> Dict[str, List[int]]:
+def tokenize_examples(examples, tokenizer):
     """
     Tokenizes input examples using the provided tokenizer.
 
@@ -40,14 +38,14 @@ def tokenize_examples(
         Dict[str, List[int]]: Tokenized examples with the corresponding labels.
             The dictionary has the same keys as the input examples, but the values are lists of token IDs.
     """
-    tokenized_examples = {}
-    for key, value in examples.items():
-        if key == "label":
-            tokenized_examples[key] = value
-        else:
-            tokenized_examples[key] = tokenizer(
-                value, truncation=True, max_length=256, padding="max_length"
-            )["input_ids"]
+    tokenized_examples = tokenizer(
+        examples["question1"],
+        examples["question2"],
+        truncation=True,
+        max_length=256,
+        padding="max_length",
+    )
+    tokenized_examples["label"] = examples["label"]
 
     return tokenized_examples
 
@@ -143,6 +141,7 @@ def load_and_tokenize_dataset(
         }
 
     tokenized_dataset: Dict[str, Dataset] = {}
+
     for split in ["train", "validation"]:
         # Tokenize the dataset using the provided tokenizer
         tokenized_dataset[split] = dataset[split].map(
@@ -183,9 +182,7 @@ def main() -> None:
     tokenized_datasets: Dict[str, Dataset] = load_and_tokenize_dataset(tokenizer)
 
     # Path to save models in the scratch filesystem
-    output_dir: str = (
-        f"/scratch1/users/u12246/out/cls-models/{args.model_name.split('/')[-1]}_qqp_pd"
-    )
+    output_dir: str = f"./out/cls-models/{args.model_name.split('/')[-1]}_qqp_pd"
 
     trainer: Trainer = Trainer(
         model=model,
