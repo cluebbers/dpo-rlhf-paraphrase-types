@@ -9,11 +9,11 @@ Supervisor: Dominik Meier, Terry Ruas
 To install requirements:
 
 ```setup
-conda create --name dpo_env \
+conda create --name dpo_env2 \
     python=3.11 \
     pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
-conda activate dpo_env
-pip install -r requirements.txt
+conda activate dpo_env2
+pip3 install -r requirements.txt
 ```
 
 This project uses huggingface datasets and models.
@@ -27,7 +27,23 @@ Datasets:
 
 ## Training
 
+All trained models are available in a [Huggingface Collection](https://huggingface.co/collections/cluebbers/enhancing-paraphrase-type-generation-673ca8d75dfe2ce962a48ac0).
+Please note: Our scripts use LoRA adapters.
+We store the merged model in the huggingface repository main directory and adapter files in a subfolder 'adapter'.
+We load the adapters from those subfolders.
+This structure is necessary to submit the models to [Open LLM Leaderboard v2](https://huggingface.co/spaces/open-llm-leaderboard/open_llm_leaderboard#/add).
+If you want to train your own models, adapt the scripts accordingly, meaning you should uncomment the line 'subfolder="adapter"'.
+Using LoRA, you should be able to train the models on consumer grade hardware.
+Our models were trained on a GeForce RTX 3080 (10 GB).
+
+We also commented the push_to_hub functionality, so you do not accidently push your models.
+
 ### Paraphrase Type Generation
+
+#### Llama-3.1-8B
+
+We use the Llama-3.1-8B model finetuned on ETPC (SFT/ETPC) by [Wahle et al.](https://github.com/jpwahle/emnlp23-paraphrase-types).
+Adapter and merged model files are also available on [Huggingface](https://huggingface.co/cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc).
 
 To train the model SFT/ETPC on the APTY dataset with reward modeling to get the model Reward/APTY:
 
@@ -35,7 +51,8 @@ To train the model SFT/ETPC on the APTY dataset with reward modeling to get the 
 python3 src/reward.py
 ```
 
-To train the model SFT/ETPC with Reward/APTY using PPO to get the model RLHF/APTY:
+We didn't continue to train the model SFT/ETPC with Reward/APTY using PPO to get the model RLHF/APTY, because of the low accuracy of the reward model.
+If you want, you can do so by finishing ppo.py and running:
 
 ```python
 python3 src/ppo.py
@@ -59,19 +76,28 @@ python3 src/dpo_llama_ptg.py \
 --loss_type=ipo
 ```
 
+#### BART-large
+
+#TODO To evaluate ParaScore
+
 ### Paraphrase Type Detection
 
-To train the model microsoft/deberta-base on the Glue/QQP dataset on paraphrase detection (binary classification):
+We adapted code provided by [Wahle et al.](https://github.com/jpwahle/emnlp23-paraphrase-types).
+To train the model microsoft/deberta-base on the Glue/QQP dataset on paraphrase detection (binary classification) to get the model deberta-base-pd-qqp:
 
 ```python
-python3 src/sft_pd.py
+python3 src/sft_pd.py \
+  model_name=microsoft/deberta-base
 ```
 
-To continue training the model on the ETPC dataset on paraphrase type detection (multilabel classification):
+To continue training the model on the ETPC dataset on paraphrase type detection (multilabel classification) to get the model deberta-base-ptd-etpc:
 
 ```python
-python3 src/sft_ptd.py
+python3 src/sft_ptd.py \
+  model_name=cluebbers/deberta-base-paraphrase-detection-qqp
 ```
+
+If you want to reproduce the hyperparemter tuning, you need to uncomment that part in sft_ptd.py.
 
 ### Evaluation
 
@@ -93,15 +119,21 @@ Further evaluation is done in the jupyter notebook. All plots and tables from th
 notebooks/plots.ipynb
 ```
 
-
 ## Pre-trained models
+
+Llama-3.1
 
 - [Llama-3.1-8B](https://huggingface.co/meta-llama/Llama-3.1-8B)
 - [SFT/ETPC](https://huggingface.co/cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc)
 - [Reward/APTY](https://huggingface.co/cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc-apty-reward)
 - [DPO/APTY](https://huggingface.co/cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-sigmoid)
 - [IPO/APTY](https://huggingface.co/cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-ipo)
+
+DeBERTa
+
 - [microsoft/deberta-base](https://huggingface.co/microsoft/deberta-base)
+- [deberta-base-pd-qqp](https://huggingface.co/cluebbers/deberta-base-paraphrase-detection-qqp)
+- [deberta-base-ptd-etpc](https://huggingface.co/cluebbers/deberta-base-paraphrase-type-detection-etpc)
 
 ## Results
 
