@@ -11,35 +11,13 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from datasets import Dataset, load_dataset
-from sklearn.metrics import (
-    accuracy_score,
-    classification_report,
-    f1_score,
-    precision_score,
-    recall_score,
-)
-from transformers import (
-    AutoConfig,
-    AutoModelForSequenceClassification,
-    AutoTokenizer,
-    DataCollatorWithPadding,
-    PreTrainedTokenizerBase,
-    Trainer,
-    TrainingArguments,
-)
+from sklearn.metrics import (accuracy_score, classification_report, f1_score,
+                             precision_score, recall_score)
+from transformers import (AutoConfig, AutoModelForSequenceClassification,
+                          AutoTokenizer, DataCollatorWithPadding,
+                          PreTrainedTokenizerBase, Trainer, TrainingArguments)
 
-TOP_10_PARAPHRASE_TYPES = [
-    "addition/deletion",
-    "change of order",
-    "derivational changes",
-    "inflectional changes",
-    "punctuation changes",
-    "same polarity substitution (contextual)",
-    "semantic based",
-    "spelling changes",
-    "subordination and nesting changes",
-    "synthetic/analytic substitution",
-]
+from common import TOP_10_PARAPHRASE_TYPES
 
 # Manually assign IDs to each of the top-10 paraphrase types
 TOP_10_PARAPHRASE_TYPE_TO_ID = {
@@ -197,7 +175,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--model_name",
         type=str,
-        default="out/cls-models/deberta-base_qqp_pd",
+        default="cluebbers/deberta-base-paraphrase-detection-qqp",
         help="Name of the model to use",
     )
 
@@ -445,7 +423,7 @@ def main() -> None:
         "train"
     ]
     tokenizer = AutoTokenizer.from_pretrained(
-        args.model_name, clean_up_tokenization_spaces=True
+        "microsoft/deberta-base", clean_up_tokenization_spaces=True
     )
 
     dataset_tokenized = dataset.map(
@@ -463,7 +441,7 @@ def main() -> None:
         dataset_tokenized, train_percent=0.8
     )
 
-    hyper_path = "/home/slim/dpo-rhlf-paraphrase-types/out/cls-models/deberta-base_qqp_pd_hyperparameters_ptd_20241024_211334.csv"
+    hyper_path = "./results/deberta-base_qqp_pd_hyperparameters_ptd_20241024_211334.csv"
     hyperparameters = load_hyperparameters_from_csv(hyper_path)
 
     def model_init(trial: Optional[optuna.trial.Trial] = None) -> torch.nn.Module:
@@ -575,7 +553,7 @@ def main() -> None:
     results["hyperparameters"] = hyperparameters
     write_results_to_csv(
         results,
-        output_file=f"out/cls-models/{args.model_name.split('/')[-1]}_ptd_results_hyperclass_{timestamp}.csv",
+        output_file=f"./out/cls-models/{args.model_name.split('/')[-1]}_ptd_results_hyperclass_{timestamp}.csv",
     )
     trainer.save_model(f"./out/cls-models/{args.model_name.split('/')[-1]}_etpc_ptd")
 
