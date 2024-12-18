@@ -1,0 +1,5 @@
+Model,Adapter,ROUGE-1,ROUGE-2,ROUGE-L,BLEU
+meta-llama/Llama-3.1-8B,base_model,0.6116,0.4456,0.5924,0.2343
+meta-llama/Llama-3.1-8B,etpc_model,0.6816,0.5946,0.6706,0.4145
+meta-llama/Llama-3.1-8B,dpo_model,0.6667,0.5771,0.6556,0.4014
+meta-llama/Llama-3.1-8B,ipo_model,0.6608,0.5638,0.6475,0.3832
