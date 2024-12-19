@@ -25,40 +25,63 @@ Datasets:
 - [APTY-ranked Dataset](https://huggingface.co/datasets/worta/apty)
 - base sentences for evaluation can be found at [generate_apt_paraphrases/Sentences](https://github.com/worta/generate_apt_paraphrases)
 
-## Training
+The training and evaluation scripts are organized into two primary tasks:
 
-All trained models are available in a [Huggingface Collection](https://huggingface.co/collections/cluebbers/enhancing-paraphrase-type-generation-673ca8d75dfe2ce962a48ac0).
-Please note: Our scripts use LoRA adapters.
-We store the merged model in the huggingface repository main directory and adapter files in a subfolder 'adapter'.
-We load the adapters from those subfolders.
-This structure is necessary to submit the models to [Open LLM Leaderboard v2](https://huggingface.co/spaces/open-llm-leaderboard/open_llm_leaderboard#/add).
-If you want to train your own models, adapt the scripts accordingly, meaning you should uncomment the line 'subfolder="adapter"'.
-Using LoRA, you should be able to train the models on consumer grade hardware.
-Our models were trained on a GeForce RTX 3080 (10 GB).
+- Paraphrase Type Generation (PTG)
 
-We also commented the push_to_hub functionality, so you do not accidently push your models.
+  - Models: Llama-3.1-8B, BART-large
 
-### Paraphrase Type Generation
+- Paraphrase Type Detection (PTD):
 
-#### Llama-3.1-8B
+  - Model: DeBERTa-base
 
-We use the Llama-3.1-8B model finetuned on ETPC (SFT/ETPC) by [Wahle et al.](https://github.com/jpwahle/emnlp23-paraphrase-types).
-Adapter and merged model files are also available on [Huggingface](https://huggingface.co/cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc).
+## Paraphrase Type Generation (PTG) Training
 
-To train the model SFT/ETPC on the APTY dataset with reward modeling to get the model Reward/APTY:
+- Llama-3.1-8B
+  Please note: Our scripts use LoRA adapters.
+  We store the merged model in the huggingface repository main directory and adapter files in a subfolder 'adapter'.
+  We load the adapters from those subfolders.
+  This structure is necessary to submit the models to [Open LLM Leaderboard v2](https://huggingface.co/spaces/open-llm-leaderboard/open_llm_leaderboard#/add).
+  If you want to train your own models, adapt the scripts accordingly, meaning you should uncomment the line 'subfolder="adapter"'.
+  Using LoRA, you should be able to train the models on consumer grade hardware.
+  Our models were trained on a GeForce RTX 3080 (10 GB).
+  We also commented the push_to_hub functionality, so you do not accidently push your models.
+
+- BART-large
+  ParaScore is tested for a limited number of [models](https://github.com/shadowkiller33/parascore_toolkit/blob/master/parascore/utils.py).
+  We decided to train bart-large.
+
+### Supervised Fine-Tuning on ETPC (SFT/ETPC)
+
+- Llama-3.1-8B
+  - We use the Llama-3.1-8B model finetuned on ETPC (SFT/ETPC) by [Wahle et al.](https://github.com/jpwahle/emnlp23-paraphrase-types).
+- BART-large
+  - We used code adapted from [Wahle et al.](https://github.com/jpwahle/emnlp23-paraphrase-types)
+
+```python
+python3 src/ptg.py \
+  model_name=facebook/bart-large \
+  task_name=paraphrase-type-generation
+```
+
+### Reward modeling on APTY-ranked dataset (Reward/APTY)
+
+- Llama-3.1-8B
 
 ```python
 python3 src/reward.py
 ```
 
-We didn't continue to train the model SFT/ETPC with Reward/APTY using PPO to get the model RLHF/APTY, because of the low accuracy of the reward model.
-If you want, you can do so by finishing ppo.py and running:
+- We didn't continue to train the model SFT/ETPC with Reward/APTY using PPO to get the model RLHF/APTY, because of the low accuracy of the reward model.
+  If you want, you can do so by finishing ppo.py and running:
 
 ```python
 python3 src/ppo.py
 ```
 
-To train the model SFT/ETPC on the APTY-ranked dataset using DPO to get the model DPO/APTY:
+### DPO optimization of SFT/ETPC on APTY-ranked dataset (DPO/APTY)
+
+- Llama-3.1-8B
 
 ```python
 python3 src/dpo_llama_ptg.py \
@@ -67,7 +90,18 @@ python3 src/dpo_llama_ptg.py \
 --loss_type=sigmoid
 ```
 
-To train the model SFT/ETPC on the APTY-ranked dataset using IPO to get the model IPO/APTY:
+- BART-large
+
+```python
+python3 src/dpo_ptg.py \
+  model_name=cluebbers/bart-large-paraphrase-type-generation-etpc
+  task_name=paraphrase-type-generation \
+  loss_type=sigmoid
+```
+
+### IPO optimization of SFT/ETPC on APTY-ranked dataset (IPO/APTY)
+
+- Llama-3.1-8B
 
 ```python
 python3 src/dpo_llama_ptg.py \
@@ -76,32 +110,46 @@ python3 src/dpo_llama_ptg.py \
 --loss_type=ipo
 ```
 
-#### BART-large
+- BART-large
 
-#TODO To evaluate ParaScore
+```python
+python3 src/dpo_ptg.py \
+  model_name=cluebbers/bart-large-paraphrase-type-generation-etpc
+  task_name=paraphrase-type-generation \
+  loss_type=ipo
+```
 
-### Paraphrase Type Detection
+## Paraphrase Type Detection (PTD) Training
 
-We adapted code provided by [Wahle et al.](https://github.com/jpwahle/emnlp23-paraphrase-types).
-To train the model microsoft/deberta-base on the Glue/QQP dataset on paraphrase detection (binary classification) to get the model deberta-base-pd-qqp:
+- Binary Classification on QQP dataset
+
+  - We adapted code provided by [Wahle et al.](https://github.com/jpwahle/emnlp23-paraphrase-types).
 
 ```python
 python3 src/sft_pd.py \
   model_name=microsoft/deberta-base
 ```
 
-To continue training the model on the ETPC dataset on paraphrase type detection (multilabel classification) to get the model deberta-base-ptd-etpc:
+- Multilabel Classification on ETPC dataset
 
 ```python
 python3 src/sft_ptd.py \
   model_name=cluebbers/deberta-base-paraphrase-detection-qqp
 ```
 
-If you want to reproduce the hyperparemter tuning, you need to uncomment that part in sft_ptd.py.
+After training, a csv file with the evaluation results is created (for thesis: [hyperparameter results](results/deberta-base_qqp_pd_ptd_results_hyperclass_20241024_161522.csv)).
 
-### Evaluation
+### Hyperparameter Tuning
 
-Evaluation of Base Model, SFT/ETPC, DPO/APTY, IPO/APTY on paraphrase type generation:
+If you want to reproduce the hyperparameter tuning, you need to uncomment that part in sft_ptd.py.
+It will train with the best hyperparameters found and create a csv file with the best hyperparameters (for thesis: [hyperparameters](results/deberta-base_qqp_pd_hyperparameters_ptd_20241024_211334.csv)).
+If you want to train with the found hyperparameters another time, you need to manually set the path to the newly created hyperparameter-file.
+
+## Evaluation
+
+Paraphrase Type Generation and ROUGE+BLEU evaluation of base model, SFT/ETPC, DPO/APTY, IPO/APTY:
+
+- Llama-3.1-8B
 
 ```python
 python3 src/eval_llama_ptg.py \
@@ -111,9 +159,18 @@ python3 src/eval_llama_ptg.py \
 --ipo_dir=cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-ipo
 ```
 
-For Open LLM Leaderboard evaluation, [submit your model](https://huggingface.co/spaces/open-llm-leaderboard/open_llm_leaderboard#/).
+- BART-large
 
-Further evaluation is done in the jupyter notebook. All plots and tables from the project are generated there.
+```python
+python3 src/eval_dpo_ptg.py \
+  model_name=facebook/bart-large \
+  etpc_dir=cluebbers/bart-large-paraphrase-type-generation-etpc \
+  dpo_dir=cluebbers/bart-large-paraphrase-type-generation-apty-sigmoid \
+  ipo_dir=cluebbers/bart-large-paraphrase-type-generation-apty-ipo
+```
+
+- For Open LLM Leaderboard evaluation, [submit your model](https://huggingface.co/spaces/open-llm-leaderboard/open_llm_leaderboard#/).
+- Further evaluation is done in the jupyter notebook. All plots and tables from the project are generated there.
 
 ```python
 notebooks/plots.ipynb
@@ -121,21 +178,28 @@ notebooks/plots.ipynb
 
 ## Pre-trained models
 
-Llama-3.1
-
-- [Llama-3.1-8B](https://huggingface.co/meta-llama/Llama-3.1-8B)
-- [SFT/ETPC](https://huggingface.co/cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc)
-- [Reward/APTY](https://huggingface.co/cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc-apty-reward)
-- [DPO/APTY](https://huggingface.co/cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-sigmoid)
-- [IPO/APTY](https://huggingface.co/cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-ipo)
-
-DeBERTa
-
-- [microsoft/deberta-base](https://huggingface.co/microsoft/deberta-base)
-- [deberta-base-pd-qqp](https://huggingface.co/cluebbers/deberta-base-paraphrase-detection-qqp)
-- [deberta-base-ptd-etpc](https://huggingface.co/cluebbers/deberta-base-paraphrase-type-detection-etpc)
+| Model        | Dataset     | Task | Link                                                                                                                                                |
+| ------------ | ----------- | ---- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Llama-3.1-8B |             |      | [meta-llama/Llama-3.1-8B](https://huggingface.co/meta-llama/Llama-3.1-8B)                                                                           |
+| Llama-3.1-8B | ETPC        | PTG  | [SFT/ETPC](https://huggingface.co/cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc)                                                           |
+| Llama-3.1-8B | ETPC + APTY | PTG  | [Reward/APTY](https://huggingface.co/cluebbers/Llama-3.1-8B-paraphrase-type-generation-etpc-apty-reward)                                            |
+| Llama-3.1-8B | ETPC + APTY | PTG  | [DPO/APTY](https://huggingface.co/cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-sigmoid)                                                   |
+| Llama-3.1-8B | ETPC + APTY | PTG  | [IPO/APTY](https://huggingface.co/cluebbers/Llama-3.1-8B-paraphrase-type-generation-apty-ipo)                                                       |
+| DeBERTa-base |             |      | [microsoft/deberta-base](https://huggingface.co/microsoft/deberta-base)                                                                             |
+| DeBERTa-base | QQP         | PD   | [cluebbers/deberta-base-paraphrase-detection-qqp](https://huggingface.co/cluebbers/deberta-base-paraphrase-detection-qqp)                           |
+| DeBERTa-base | QQP + ETPC  | PTD  | [cluebbers/deberta-base-paraphrase-type-detection-etpc](https://huggingface.co/cluebbers/deberta-base-paraphrase-type-detection-etpc)               |
+| BART-large   |             |      | [facebook/bart-large](https://huggingface.co/facebook/bart-large)                                                                                   |
+| BART-large   | ETPC        | PTG  | [cluebbers/bart-large-paraphrase-type-generation-etpc](https://huggingface.co/cluebbers/bart-large-paraphrase-type-generation-etpc)                 |
+| BART-large   | ETPC + APTY | PTG  | [cluebbers/bart-large-paraphrase-type-generation-apty-sigmoid](https://huggingface.co/cluebbers/bart-large-paraphrase-type-generation-apty-sigmoid) |
+| BART-large   | ETPC + APTY | PTG  | [cluebbers/bart-large-paraphrase-type-generation-apty-ipo](https://huggingface.co/cluebbers/bart-large-paraphrase-type-generation-apty-ipo)         |
 
 ## Results
+
+| Model        | Generated Paraphrases + automated metric scores                                                  | Annotation file                                                  |
+| ------------ | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| Llama-3.1-8B | [Llama-3.1-8B generated paraphrases](results/generated_paraphrases_Llama-3.1-8B_2024-11-15.json) | [project 6](results/project-6-at-2024-12-14-09-22-25077dd1.json) |
+| Llama-2-7B   | [Llama-2-7B generated paraphrases](results/generated_paraphrases_Llama-2-7b-hf_2024-09-03.json)  | [project 5](results/project-5-at-2024-10-21-12-25-522ea966.json) |
+| bart-large   | [bart-large generated paraphrases](results/generated_paraphrases_bart-large.json)                | None                                                             |
 
 - Directly Leveraging Human-Ranked Data for Improved Paraphrase Types: By training models with DPO on the APTY dataset, we achieve a 3~\% higher human annotation accuracy on specific paraphrase types than a supervised fine-tuned model.
 - Enhancing User-Aligned Quality: Human annotators preferred DPO-generated paraphrases over baseline outputs in 16~\% more cases (section~\ref{sec:human_preferences}).
@@ -149,13 +213,13 @@ If you use the APTY dataset, please cite:
 
 ```bib
 @misc{meier2024humanunderstandingparaphrasetypes,
-      title={Towards Human Understanding of Paraphrase Types in ChatGPT}, 
+      title={Towards Human Understanding of Paraphrase Types in ChatGPT},
       author={Dominik Meier and Jan Philip Wahle and Terry Ruas and Bela Gipp},
       year={2024},
       eprint={2407.02302},
       archivePrefix={arXiv},
       primaryClass={cs.CL},
-      url={https://arxiv.org/abs/2407.02302}, 
+      url={https://arxiv.org/abs/2407.02302},
 }
 ```
 

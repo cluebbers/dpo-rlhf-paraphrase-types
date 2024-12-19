@@ -1,0 +1,1282 @@
+[
+    {
+        "source": "The updated 64-bit operating system , Windows XP 64-Bit Edition for 64-Bit Extended Systems , will run natively on AMD Athlon 64 processor-powered desktops and AMD Opteron processor-powered workstations .",
+        "target": "Windows XP 64-bit Edition for 64-Bit Extended Systems will support AMD64 technology, running natively on AMD Athlon 64 powered desktops and AMD Opteron processor-powered workstations.",
+        "paraphrase": "The  64-bit operating system  will run natively on AMD Athlon 64-powered desktops and AMD Opteron processor-powered workstations .The  extension will also be available in the 64-",
+        "metrics": {
+            "rouge-1": 0.4680851013852422,
+            "rouge-2": 0.32653060724698046,
+            "rouge-l": 0.4680851013852422,
+            "bleu": 0.23819486101149287,
+            "free_score": 0.8320600390434265,
+            "base_score": 0.8356621432304382
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Assani said Tuesday he did not know what to charge the men with because US officials refused to share information with him .",
+        "target": "Prosecutors said they did not know what crimes to charge the men with because U.S. officials refused to share information with them.",
+        "paraphrase": "Assani said Tuesday he did not know what to charge the men with because US officials refused to share information with him .",
+        "metrics": {
+            "rouge-1": 0.7317073120761451,
+            "rouge-2": 0.6046511577934021,
+            "rouge-l": 0.7317073120761451,
+            "bleu": 0.5194247346787363,
+            "free_score": 0.949999988079071,
+            "base_score": 0.95
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "While a month 's supply of aspirin can cost less than $ 10 , the equivalent amount of ticlopidine can run significantly more than $ 100 .",
+        "target": "While a month's supply of aspirin can cost under $10, the equivalent amount of ticlopidine can run well over $100.",
+        "paraphrase": "While aspirin of supply month if  you can can cost less less than $10,000, you can also buy $10.10 equivalent amount of ice cream",
+        "metrics": {
+            "rouge-1": 0.42105262659279785,
+            "rouge-2": 0.14285713790249452,
+            "rouge-l": 0.3684210476454294,
+            "bleu": 0.05856458233275369,
+            "free_score": 0.5879360437393188,
+            "base_score": 0.5965585875511169
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "He is one of two Democrats on the five-member FCC , and he is a strong advocate of harsher penalties against radio and television stations that violate indecency laws .",
+        "target": "Copps, one of two Democrats on the five-member commission, has pushed for harsher penalties against radio and television stations that violate indecency laws.",
+        "paraphrase": "FFFJ-FJH-F5-FJC-F4-FK-F2-F3-F6-F7-F8-F9-F10-F11-F",
+        "metrics": {
+            "rouge-1": 0.0,
+            "rouge-2": 0.0,
+            "rouge-l": 0.0,
+            "bleu": 0,
+            "free_score": 0.30261728167533875,
+            "base_score": 0.30119274735450746
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "The lawsuit , filed after a 19-month investigation by the Employee Benefits Security Administration , names Lay and Skilling among others .",
+        "target": "The lawsuit, filed after a 19-month investigation by the Employee Benefits Security Administration, names former Enron Chairman Kenneth Lay and former chief executive Jeff Skilling, among others.",
+        "paraphrase": "Lay ...............................The lettering on the lettering is:The letterings are:A.L.P.S.The Lettering is...A.Lay ...............................................................A. L. P. S.",
+        "metrics": {
+            "rouge-1": 0.14999999545000015,
+            "rouge-2": 0.0,
+            "rouge-l": 0.14999999545000015,
+            "bleu": 0.0070629468826119614,
+            "free_score": 0.4531516432762146,
+            "base_score": 0.39348904967308046
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Those reports were denied by the interior minister , Prince Nayef .",
+        "target": "However, the Saudi interior minister, Prince Nayef, denied the reports.",
+        "paraphrase": "nayef Nayef. nayef, nayf, NayefNayf. naysef, Naysef.Naysef nayff, naysf.Nayff. Nays",
+        "metrics": {
+            "rouge-1": 0.0,
+            "rouge-2": 0.0,
+            "rouge-l": 0.0,
+            "bleu": 0,
+            "free_score": 0.43765607476234436,
+            "base_score": 0.4199537205696106
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Miss Novikova said while there is no standard weight for ballerinas , Miss Volochkova is 'bigger than others ' .",
+        "target": "Commenting on the firing today, Ms. Novikova said that there was no standard weight for ballerinas but that Ms. Volochkova \"is bigger than others.\"",
+        "paraphrase": "Alzheimer’s disease.Coverage of 1:00%-3:00p.m. old-timers.vowel-sparing.letter-letters-letter-spam.Special-affairs-",
+        "metrics": {
+            "rouge-1": 0.0,
+            "rouge-2": 0.0,
+            "rouge-l": 0.0,
+            "bleu": 0,
+            "free_score": 0.4115879237651825,
+            "base_score": 0.40713869214057924
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "The picture changes a bit should Sen. Hillary Rodham Clinton be the Democratic presidential candidate .",
+        "target": "The picture changes slightly should New York Sen. Hillary Rodham Clinton end up as the Democratic presidential candidate.",
+        "paraphrase": "Democratic presidential candidate . Sen. Hillary Rodham Clinton be  the  president of the  United  States.The picture changes  money  changes  money changes money changes  changes",
+        "metrics": {
+            "rouge-1": 0.6285714235755103,
+            "rouge-2": 0.388888883904321,
+            "rouge-l": 0.6285714235755103,
+            "bleu": 0.13706146326959745,
+            "free_score": 0.5579473376274109,
+            "base_score": 0.6288864779472351
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Goldman Sachs said : `` We believe this is the right decision for the company , for its employees and for its creditors . ''",
+        "target": "\"We believe this is the right decision for the company (Jinro), for its employees and for its creditors,\" it said.",
+        "paraphrase": "Goldman  Goldman GoldmanSachs said : `` We believe this is the right decision for we belive this-is-the-right",
+        "metrics": {
+            "rouge-1": 0.4999999950000001,
+            "rouge-2": 0.35294117148788934,
+            "rouge-l": 0.43749999500000003,
+            "bleu": 0.2918989744382245,
+            "free_score": 0.7040989995002747,
+            "base_score": 0.7004391717910766
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Trevor Fetter , who returned to Tenet as president last November , has been appointed as acting CEO , the company said .",
+        "target": "The board has appointed Trevor Fetter, who returned to the company as president last November, as acting CEO.",
+        "paraphrase": "Trevor Fetter  who returned to  tenet as president last November has been appointed  as acting CEO CEO,  the company said ",
+        "metrics": {
+            "rouge-1": 0.7222222172376543,
+            "rouge-2": 0.388888883904321,
+            "rouge-l": 0.4999999950154322,
+            "bleu": 0.10762295042299774,
+            "free_score": 0.7557721138000488,
+            "base_score": 0.762307295922094
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Is there a reason why we should travel alone?",
+        "target": "What are some reasons to travel alone?",
+        "paraphrase": "Is there a reason why we should travel alone?",
+        "metrics": {
+            "rouge-1": 0.24999999507812506,
+            "rouge-2": 0.14285713795918387,
+            "rouge-l": 0.24999999507812506,
+            "bleu": 0.050712153369465586,
+            "free_score": 0.949999988079071,
+            "base_score": 0.95
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "QQP"
+    },
+    {
+        "source": "I am 25 year old guy and never had a girlfriend. Is this weird?",
+        "target": "I am 25 years old. I have never had a girlfriend. Is something wrong with me?",
+        "paraphrase": "I am 25 year old guy and never had a girlfriend. Is this weird?",
+        "metrics": {
+            "rouge-1": 0.6206896501783592,
+            "rouge-2": 0.4285714235969388,
+            "rouge-l": 0.6206896501783592,
+            "bleu": 0.3082331946100712,
+            "free_score": 0.949999988079071,
+            "base_score": 0.95
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "QQP"
+    },
+    {
+        "source": "\"What does a good answer on Quora look like? What does it mean to \"\"be helpful\"\"?\"",
+        "target": "How do you write a good answer on Quora?",
+        "paraphrase": "\"What does a good answer on Quora look like? What does it mean to \"\"be helpful\"\"?\"",
+        "metrics": {
+            "rouge-1": 0.33333332864583337,
+            "rouge-2": 0.2608695606805294,
+            "rouge-l": 0.33333332864583337,
+            "bleu": 0.1531024544118244,
+            "free_score": 0.949999988079071,
+            "base_score": 0.95
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What are the best things to do in Hong Kong?",
+        "target": "What is the best thing in Hong Kong?",
+        "paraphrase": "What are the best things to do in Hong Kong?",
+        "metrics": {
+            "rouge-1": 0.6666666617283951,
+            "rouge-2": 0.37499999507812504,
+            "rouge-l": 0.6666666617283951,
+            "bleu": 0.13747081017605653,
+            "free_score": 0.9499999284744263,
+            "base_score": 0.9499999403953552
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "QQP"
+    },
+    {
+        "source": "Which is the best gaming laptop under 40k?",
+        "target": "Which is the best gaming laptop under 40,000 rs?",
+        "paraphrase": "Which is the best gaming laptop under 40k?",
+        "metrics": {
+            "rouge-1": 0.823529406782007,
+            "rouge-2": 0.7999999950222222,
+            "rouge-l": 0.823529406782007,
+            "bleu": 0.7420884818558928,
+            "free_score": 0.949999988079071,
+            "base_score": 0.95
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What was the deadliest battle in history?",
+        "target": "What was the bloodiest battle in history?",
+        "paraphrase": "What was the deadliest battle in history?",
+        "metrics": {
+            "rouge-1": 0.8571428521428571,
+            "rouge-2": 0.6666666616666668,
+            "rouge-l": 0.8571428521428571,
+            "bleu": 0.274941620352113,
+            "free_score": 0.9499999284744263,
+            "base_score": 0.9499999403953552
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What are your views about demonetisation in India?",
+        "target": "What do you think about the ban on 500 and 1000 denomination notes in India?",
+        "paraphrase": "What are your views about demonetisation in India?",
+        "metrics": {
+            "rouge-1": 0.3478260824196598,
+            "rouge-2": 0.095238090793651,
+            "rouge-l": 0.3478260824196598,
+            "bleu": 0.02911923797851205,
+            "free_score": 0.949999988079071,
+            "base_score": 0.95
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "QQP"
+    },
+    {
+        "source": "Is it a bad time to buy a condo or a house in the Bay Area in 2017?",
+        "target": "Would 2017 be a good time to buy a house in Bay Area?",
+        "paraphrase": "Is it a bad time to buy a condo or a house in the Bay Area in 2017?",
+        "metrics": {
+            "rouge-1": 0.518518513580247,
+            "rouge-2": 0.3448275813555292,
+            "rouge-l": 0.518518513580247,
+            "bleu": 0.20105373454060027,
+            "free_score": 0.9499999284744263,
+            "base_score": 0.9499999403953552
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What is the Sahara, and how do the average temperatures there compare to the ones in the Patagonian Desert?",
+        "target": "What is the Sahara, and how do the average temperatures there compare to the ones in the Registan Desert?",
+        "paraphrase": "What is the Sahara, and how do the average temperatures there compare to the ones in the Patagonian Desert?",
+        "metrics": {
+            "rouge-1": 0.937499995,
+            "rouge-2": 0.888888883888889,
+            "rouge-l": 0.937499995,
+            "bleu": 0.8979542144404234,
+            "free_score": 0.949999988079071,
+            "base_score": 0.95
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What books should I read as an aspiring entrepreneur?",
+        "target": "What are the top books an aspiring teen entrepreneur should read?",
+        "paraphrase": "What books should I read as an aspiring entrepreneur?",
+        "metrics": {
+            "rouge-1": 0.4999999950500001,
+            "rouge-2": 0.11111110617283973,
+            "rouge-l": 0.39999999505,
+            "bleu": 0.05106074763790193,
+            "free_score": 0.949999988079071,
+            "base_score": 0.95
+        },
+        "model": "facebook/bart-large",
+        "adapter": "None",
+        "dataset": "QQP"
+    },
+    {
+        "source": "The updated 64-bit operating system , Windows XP 64-Bit Edition for 64-Bit Extended Systems , will run natively on AMD Athlon 64 processor-powered desktops and AMD Opteron processor-powered workstations .",
+        "target": "Windows XP 64-bit Edition for 64-Bit Extended Systems will support AMD64 technology, running natively on AMD Athlon 64 powered desktops and AMD Opteron processor-powered workstations.",
+        "paraphrase": "The new version of Windows XP 64-bit Edition for 64-Bit Extended Systems will run natively on AMD Athlon 64 processor-powered desktops and AMD Opteron processor powered workstations.",
+        "metrics": {
+            "rouge-1": 0.7999999950080001,
+            "rouge-2": 0.599999995008,
+            "rouge-l": 0.7199999950079999,
+            "bleu": 0.5331034421473966,
+            "free_score": 0.9097734689712524,
+            "base_score": 0.8969801801593363
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Assani said Tuesday he did not know what to charge the men with because US officials refused to share information with him .",
+        "target": "Prosecutors said they did not know what crimes to charge the men with because U.S. officials refused to share information with them.",
+        "paraphrase": "Assani said he did not know what to charge the men with because US officials refused to share information with him.",
+        "metrics": {
+            "rouge-1": 0.7499999950125001,
+            "rouge-2": 0.619047614058957,
+            "rouge-l": 0.7499999950125001,
+            "bleu": 0.5462268442759876,
+            "free_score": 0.9349147081375122,
+            "base_score": 0.9116863946211503
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "While a month 's supply of aspirin can cost less than $ 10 , the equivalent amount of ticlopidine can run significantly more than $ 100 .",
+        "target": "While a month's supply of aspirin can cost under $10, the equivalent amount of ticlopidine can run well over $100.",
+        "paraphrase": "While a month's supply of pirin can cost less than $10,000, it can run significantly more than $100,000.",
+        "metrics": {
+            "rouge-1": 0.4705882303114187,
+            "rouge-2": 0.3333333283487655,
+            "rouge-l": 0.4705882303114187,
+            "bleu": 0.23062062409374434,
+            "free_score": 0.7830421924591064,
+            "base_score": 0.7868007964834307
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "He is one of two Democrats on the five-member FCC , and he is a strong advocate of harsher penalties against radio and television stations that violate indecency laws .",
+        "target": "Copps, one of two Democrats on the five-member commission, has pushed for harsher penalties against radio and television stations that violate indecency laws.",
+        "paraphrase": "He is also known to be an advocate for people who are being made aware of the effects of being a little bit of an out-of-work person.",
+        "metrics": {
+            "rouge-1": 0.13043477760869585,
+            "rouge-2": 0.0,
+            "rouge-l": 0.08695651673913073,
+            "bleu": 0.009186672262412125,
+            "free_score": 0.5917216539382935,
+            "base_score": 0.558371262550354
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "The lawsuit , filed after a 19-month investigation by the Employee Benefits Security Administration , names Lay and Skilling among others .",
+        "target": "The lawsuit, filed after a 19-month investigation by the Employee Benefits Security Administration, names former Enron Chairman Kenneth Lay and former chief executive Jeff Skilling, among others.",
+        "paraphrase": "The  lawsuit, filed by the Securities and Exchange Commission, names 19-month-old Layne Layne's \"Layne's Lawsuit.\"",
+        "metrics": {
+            "rouge-1": 0.3333333286167801,
+            "rouge-2": 0.14634145877453913,
+            "rouge-l": 0.28571428099773244,
+            "bleu": 0.04020529609775292,
+            "free_score": 0.5984893441200256,
+            "base_score": 0.6187753248214721
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Those reports were denied by the interior minister , Prince Nayef .",
+        "target": "However, the Saudi interior minister, Prince Nayef, denied the reports.",
+        "paraphrase": "Those reports were denied by Prince Nayef, the interim minister of education.",
+        "metrics": {
+            "rouge-1": 0.47619047129251707,
+            "rouge-2": 0.09999999505000023,
+            "rouge-l": 0.2857142808163266,
+            "bleu": 0.0428361950754725,
+            "free_score": 0.8789728879928589,
+            "base_score": 0.8667388129234314
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Miss Novikova said while there is no standard weight for ballerinas , Miss Volochkova is 'bigger than others ' .",
+        "target": "Commenting on the firing today, Ms. Novikova said that there was no standard weight for ballerinas but that Ms. Volochkova \"is bigger than others.\"",
+        "paraphrase": "It's been awhile since I've written a book. I don't know what to say.",
+        "metrics": {
+            "rouge-1": 0.0,
+            "rouge-2": 0.0,
+            "rouge-l": 0.0,
+            "bleu": 0,
+            "free_score": 0.51270991563797,
+            "base_score": 0.4600751566886902
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "The picture changes a bit should Sen. Hillary Rodham Clinton be the Democratic presidential candidate .",
+        "target": "The picture changes slightly should New York Sen. Hillary Rodham Clinton end up as the Democratic presidential candidate.",
+        "paraphrase": "The picture changes the picture of who should be the Democratic presidential candidate: Sen. Hillary Rodham Clinton, a New York Democrat.",
+        "metrics": {
+            "rouge-1": 0.648648643652301,
+            "rouge-2": 0.37837837341124914,
+            "rouge-l": 0.648648643652301,
+            "bleu": 0.11508832942853259,
+            "free_score": 0.751472532749176,
+            "base_score": 0.795049147605896
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Goldman Sachs said : `` We believe this is the right decision for the company , for its employees and for its creditors . ''",
+        "target": "\"We believe this is the right decision for the company (Jinro), for its employees and for its creditors,\" it said.",
+        "paraphrase": "\"We believe this is the right decision for the company, for its employees and for its creditors,\" Mr. Sachs said.",
+        "metrics": {
+            "rouge-1": 0.812499995,
+            "rouge-2": 0.7222222172222222,
+            "rouge-l": 0.812499995,
+            "bleu": 0.7039848207052138,
+            "free_score": 0.8295938372612,
+            "base_score": 0.8705588014444448
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Trevor Fetter , who returned to Tenet as president last November , has been appointed as acting CEO , the company said .",
+        "target": "The board has appointed Trevor Fetter, who returned to the company as president last November, as acting CEO.",
+        "paraphrase": "Trevor Fetter, who returned to the company as president last November, has been appointed as acting CEO, the company said.",
+        "metrics": {
+            "rouge-1": 0.8235294067647059,
+            "rouge-2": 0.6285714235755103,
+            "rouge-l": 0.7058823479411767,
+            "bleu": 0.5653636138834072,
+            "free_score": 0.8582974672317505,
+            "base_score": 0.8641116167678208
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Is there a reason why we should travel alone?",
+        "target": "What are some reasons to travel alone?",
+        "paraphrase": "Is there a reason why we should travel alone?",
+        "metrics": {
+            "rouge-1": 0.24999999507812506,
+            "rouge-2": 0.14285713795918387,
+            "rouge-l": 0.24999999507812506,
+            "bleu": 0.050712153369465586,
+            "free_score": 0.949999988079071,
+            "base_score": 0.95
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "QQP"
+    },
+    {
+        "source": "I am 25 year old guy and never had a girlfriend. Is this weird?",
+        "target": "I am 25 years old. I have never had a girlfriend. Is something wrong with me?",
+        "paraphrase": "I am 25 year old guy and never had a girlfriend. Is this weird?",
+        "metrics": {
+            "rouge-1": 0.6206896501783592,
+            "rouge-2": 0.4285714235969388,
+            "rouge-l": 0.6206896501783592,
+            "bleu": 0.3082331946100712,
+            "free_score": 0.949999988079071,
+            "base_score": 0.95
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "QQP"
+    },
+    {
+        "source": "\"What does a good answer on Quora look like? What does it mean to \"\"be helpful\"\"?\"",
+        "target": "How do you write a good answer on Quora?",
+        "paraphrase": "\"What does a good answer on Quora look like? What does it mean to be helpful?\"",
+        "metrics": {
+            "rouge-1": 0.33333332864583337,
+            "rouge-2": 0.2608695606805294,
+            "rouge-l": 0.33333332864583337,
+            "bleu": 0.1531024544118244,
+            "free_score": 0.9150809049606323,
+            "base_score": 0.8740315816543659
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What are the best things to do in Hong Kong?",
+        "target": "What is the best thing in Hong Kong?",
+        "paraphrase": "What are the best things to do in Hong Kong?",
+        "metrics": {
+            "rouge-1": 0.6666666617283951,
+            "rouge-2": 0.37499999507812504,
+            "rouge-l": 0.6666666617283951,
+            "bleu": 0.13747081017605653,
+            "free_score": 0.9499999284744263,
+            "base_score": 0.9499999403953552
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "QQP"
+    },
+    {
+        "source": "Which is the best gaming laptop under 40k?",
+        "target": "Which is the best gaming laptop under 40,000 rs?",
+        "paraphrase": "Which is the best gaming laptop under 40k?",
+        "metrics": {
+            "rouge-1": 0.823529406782007,
+            "rouge-2": 0.7999999950222222,
+            "rouge-l": 0.823529406782007,
+            "bleu": 0.7420884818558928,
+            "free_score": 0.949999988079071,
+            "base_score": 0.95
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What was the deadliest battle in history?",
+        "target": "What was the bloodiest battle in history?",
+        "paraphrase": "What was the deadliest battle in history?",
+        "metrics": {
+            "rouge-1": 0.8571428521428571,
+            "rouge-2": 0.6666666616666668,
+            "rouge-l": 0.8571428521428571,
+            "bleu": 0.274941620352113,
+            "free_score": 0.9499999284744263,
+            "base_score": 0.9499999403953552
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What are your views about demonetisation in India?",
+        "target": "What do you think about the ban on 500 and 1000 denomination notes in India?",
+        "paraphrase": "What are your views about demonetisation in India?",
+        "metrics": {
+            "rouge-1": 0.3478260824196598,
+            "rouge-2": 0.095238090793651,
+            "rouge-l": 0.3478260824196598,
+            "bleu": 0.02911923797851205,
+            "free_score": 0.949999988079071,
+            "base_score": 0.95
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "QQP"
+    },
+    {
+        "source": "Is it a bad time to buy a condo or a house in the Bay Area in 2017?",
+        "target": "Would 2017 be a good time to buy a house in Bay Area?",
+        "paraphrase": "Is it a bad time to buy a condo or a house in the Bay Area in 2017?",
+        "metrics": {
+            "rouge-1": 0.518518513580247,
+            "rouge-2": 0.3448275813555292,
+            "rouge-l": 0.518518513580247,
+            "bleu": 0.20105373454060027,
+            "free_score": 0.9499999284744263,
+            "base_score": 0.9499999403953552
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What is the Sahara, and how do the average temperatures there compare to the ones in the Patagonian Desert?",
+        "target": "What is the Sahara, and how do the average temperatures there compare to the ones in the Registan Desert?",
+        "paraphrase": "What is the Sahara, and how do the average temperatures there compare to the ones in the Patagonian Desert?",
+        "metrics": {
+            "rouge-1": 0.937499995,
+            "rouge-2": 0.888888883888889,
+            "rouge-l": 0.937499995,
+            "bleu": 0.8979542144404234,
+            "free_score": 0.949999988079071,
+            "base_score": 0.95
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What books should I read as an aspiring entrepreneur?",
+        "target": "What are the top books an aspiring teen entrepreneur should read?",
+        "paraphrase": "What books should I read as an aspiring entrepreneur?",
+        "metrics": {
+            "rouge-1": 0.4999999950500001,
+            "rouge-2": 0.11111110617283973,
+            "rouge-l": 0.39999999505,
+            "bleu": 0.05106074763790193,
+            "free_score": 0.949999988079071,
+            "base_score": 0.95
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        "dataset": "QQP"
+    },
+    {
+        "source": "The updated 64-bit operating system , Windows XP 64-Bit Edition for 64-Bit Extended Systems , will run natively on AMD Athlon 64 processor-powered desktops and AMD Opteron processor-powered workstations .",
+        "target": "Windows XP 64-bit Edition for 64-Bit Extended Systems will support AMD64 technology, running natively on AMD Athlon 64 powered desktops and AMD Opteron processor-powered workstations.",
+        "paraphrase": "The new version of Windows, Windows XP for 64-Bit Extended Systems, will run natively on AMD Athlon 64 processor-powered desktops and servers.",
+        "metrics": {
+            "rouge-1": 0.6086956471833649,
+            "rouge-2": 0.3555555505777778,
+            "rouge-l": 0.5652173863137997,
+            "bleu": 0.23321078701700157,
+            "free_score": 0.9108402132987976,
+            "base_score": 0.8756804037094116
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Assani said Tuesday he did not know what to charge the men with because US officials refused to share information with him .",
+        "target": "Prosecutors said they did not know what crimes to charge the men with because U.S. officials refused to share information with them.",
+        "paraphrase": "U.S. officials refused to share information with Assani, who said he did not know what to charge the men with because they had not been arrested.",
+        "metrics": {
+            "rouge-1": 0.7999999950222222,
+            "rouge-2": 0.6249999950347221,
+            "rouge-l": 0.755555550577778,
+            "bleu": 0.5053915409642312,
+            "free_score": 0.7905240654945374,
+            "base_score": 0.7916925120353698
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "While a month 's supply of aspirin can cost less than $ 10 , the equivalent amount of ticlopidine can run significantly more than $ 100 .",
+        "target": "While a month's supply of aspirin can cost under $10, the equivalent amount of ticlopidine can run well over $100.",
+        "paraphrase": "\"I think we can now run more than we would have hoped.\"",
+        "metrics": {
+            "rouge-1": 0.1333333285333335,
+            "rouge-2": 0.0,
+            "rouge-l": 0.1333333285333335,
+            "bleu": 0.010399769989211287,
+            "free_score": 0.49889880418777466,
+            "base_score": 0.4554997253417969
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "He is one of two Democrats on the five-member FCC , and he is a strong advocate of harsher penalties against radio and television stations that violate indecency laws .",
+        "target": "Copps, one of two Democrats on the five-member commission, has pushed for harsher penalties against radio and television stations that violate indecency laws.",
+        "paraphrase": "In a statement from the Associated Press, I.S.O.J. comes from a group of people who, in the mid-seventies, are on the list of people to watch. I.s..",
+        "metrics": {
+            "rouge-1": 0.12765956947034876,
+            "rouge-2": 0.03921568136870496,
+            "rouge-l": 0.12765956947034876,
+            "bleu": 0.01633647013102316,
+            "free_score": 0.5172522664070129,
+            "base_score": 0.49766932606697084
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "The lawsuit , filed after a 19-month investigation by the Employee Benefits Security Administration , names Lay and Skilling among others .",
+        "target": "The lawsuit, filed after a 19-month investigation by the Employee Benefits Security Administration, names former Enron Chairman Kenneth Lay and former chief executive Jeff Skilling, among others.",
+        "paraphrase": "\"The Lawsuit of the Week, which names and names of people who have sued for tax refunds, may have been tried and won.",
+        "metrics": {
+            "rouge-1": 0.13333332845432116,
+            "rouge-2": 0.0,
+            "rouge-l": 0.13333332845432116,
+            "bleu": 0.00916011417185022,
+            "free_score": 0.5021776556968689,
+            "base_score": 0.5041974353790283
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Those reports were denied by the interior minister , Prince Nayef .",
+        "target": "However, the Saudi interior minister, Prince Nayef, denied the reports.",
+        "paraphrase": "\"Those reports, however, were denied by the minister, Prince Nayef.",
+        "metrics": {
+            "rouge-1": 0.42105262659279785,
+            "rouge-2": 0.11111110611111134,
+            "rouge-l": 0.31578946869806096,
+            "bleu": 0.05307712171072445,
+            "free_score": 0.8436149954795837,
+            "base_score": 0.8349673135448367
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Miss Novikova said while there is no standard weight for ballerinas , Miss Volochkova is 'bigger than others ' .",
+        "target": "Commenting on the firing today, Ms. Novikova said that there was no standard weight for ballerinas but that Ms. Volochkova \"is bigger than others.\"",
+        "paraphrase": "The people of New York City are now on vacation.",
+        "metrics": {
+            "rouge-1": 0.06060605638200213,
+            "rouge-2": 0.0,
+            "rouge-l": 0.06060605638200213,
+            "bleu": 0.005204512922773221,
+            "free_score": 0.5450858473777771,
+            "base_score": 0.4643719065189362
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "The picture changes a bit should Sen. Hillary Rodham Clinton be the Democratic presidential candidate .",
+        "target": "The picture changes slightly should New York Sen. Hillary Rodham Clinton end up as the Democratic presidential candidate.",
+        "paraphrase": "The New York Democratic presidential candidate, Sen. Hillary Rodham Clinton, I-N.Y., should be the Democratic presidential nominee.",
+        "metrics": {
+            "rouge-1": 0.5714285664326532,
+            "rouge-2": 0.2941176420588236,
+            "rouge-l": 0.5714285664326532,
+            "bleu": 0.10845665754777516,
+            "free_score": 0.7289298176765442,
+            "base_score": 0.7616207766532898
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Goldman Sachs said : `` We believe this is the right decision for the company , for its employees and for its creditors . ''",
+        "target": "\"We believe this is the right decision for the company (Jinro), for its employees and for its creditors,\" it said.",
+        "paraphrase": "\"We believe this is the right decision for the company, for its employees and for its creditors,\" he said.",
+        "metrics": {
+            "rouge-1": 0.8387096724245579,
+            "rouge-2": 0.7428571378612244,
+            "rouge-l": 0.8387096724245579,
+            "bleu": 0.7062089121690315,
+            "free_score": 0.8423119187355042,
+            "base_score": 0.9157470747622477
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Trevor Fetter , who returned to Tenet as president last November , has been appointed as acting CEO , the company said .",
+        "target": "The board has appointed Trevor Fetter, who returned to the company as president last November, as acting CEO.",
+        "paraphrase": "Trevor Fetter, who returned to Tenet as president last November, has been appointed as acting CEO, the company said.",
+        "metrics": {
+            "rouge-1": 0.7999999950040816,
+            "rouge-2": 0.514285709289796,
+            "rouge-l": 0.5714285664326532,
+            "bleu": 0.38411167208361274,
+            "free_score": 0.8918127417564392,
+            "base_score": 0.8702276188986642
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Is there a reason why we should travel alone?",
+        "target": "What are some reasons to travel alone?",
+        "paraphrase": "Is there a reason why we should travel alone?",
+        "metrics": {
+            "rouge-1": 0.24999999507812506,
+            "rouge-2": 0.14285713795918387,
+            "rouge-l": 0.24999999507812506,
+            "bleu": 0.050712153369465586,
+            "free_score": 0.949999988079071,
+            "base_score": 0.95
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "QQP"
+    },
+    {
+        "source": "I am 25 year old guy and never had a girlfriend. Is this weird?",
+        "target": "I am 25 years old. I have never had a girlfriend. Is something wrong with me?",
+        "paraphrase": "I am 25 year old guy and never had a girlfriend. Is this weird?",
+        "metrics": {
+            "rouge-1": 0.6206896501783592,
+            "rouge-2": 0.4285714235969388,
+            "rouge-l": 0.6206896501783592,
+            "bleu": 0.3082331946100712,
+            "free_score": 0.949999988079071,
+            "base_score": 0.95
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "QQP"
+    },
+    {
+        "source": "\"What does a good answer on Quora look like? What does it mean to \"\"be helpful\"\"?\"",
+        "target": "How do you write a good answer on Quora?",
+        "paraphrase": "\"What does a good answer on Quora look like? What does it mean to \"be helpful?\"",
+        "metrics": {
+            "rouge-1": 0.33333332864583337,
+            "rouge-2": 0.2608695606805294,
+            "rouge-l": 0.33333332864583337,
+            "bleu": 0.1531024544118244,
+            "free_score": 0.9181006550788879,
+            "base_score": 0.8984611050592483
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What are the best things to do in Hong Kong?",
+        "target": "What is the best thing in Hong Kong?",
+        "paraphrase": "What are the best things to do in Hong Kong?",
+        "metrics": {
+            "rouge-1": 0.6666666617283951,
+            "rouge-2": 0.37499999507812504,
+            "rouge-l": 0.6666666617283951,
+            "bleu": 0.13747081017605653,
+            "free_score": 0.9499999284744263,
+            "base_score": 0.9499999403953552
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "QQP"
+    },
+    {
+        "source": "Which is the best gaming laptop under 40k?",
+        "target": "Which is the best gaming laptop under 40,000 rs?",
+        "paraphrase": "The best gaming laptop under 40k?",
+        "metrics": {
+            "rouge-1": 0.5333333285333334,
+            "rouge-2": 0.4615384568047337,
+            "rouge-l": 0.5333333285333334,
+            "bleu": 0.3081980909598119,
+            "free_score": 0.9471060037612915,
+            "base_score": 0.9269314746467434
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What was the deadliest battle in history?",
+        "target": "What was the bloodiest battle in history?",
+        "paraphrase": "What was the deadliest battle in history?",
+        "metrics": {
+            "rouge-1": 0.8571428521428571,
+            "rouge-2": 0.6666666616666668,
+            "rouge-l": 0.8571428521428571,
+            "bleu": 0.274941620352113,
+            "free_score": 0.9499999284744263,
+            "base_score": 0.9499999403953552
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What are your views about demonetisation in India?",
+        "target": "What do you think about the ban on 500 and 1000 denomination notes in India?",
+        "paraphrase": "What are your views about demonetisation in India?",
+        "metrics": {
+            "rouge-1": 0.3478260824196598,
+            "rouge-2": 0.095238090793651,
+            "rouge-l": 0.3478260824196598,
+            "bleu": 0.02911923797851205,
+            "free_score": 0.949999988079071,
+            "base_score": 0.95
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "QQP"
+    },
+    {
+        "source": "Is it a bad time to buy a condo or a house in the Bay Area in 2017?",
+        "target": "Would 2017 be a good time to buy a house in Bay Area?",
+        "paraphrase": "Is it a bad time to buy a condo or a house in the Bay Area?",
+        "metrics": {
+            "rouge-1": 0.6153846104142012,
+            "rouge-2": 0.4444444395061729,
+            "rouge-l": 0.6153846104142012,
+            "bleu": 0.24677894099899664,
+            "free_score": 0.9620696306228638,
+            "base_score": 0.9411506776870695
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What is the Sahara, and how do the average temperatures there compare to the ones in the Patagonian Desert?",
+        "target": "What is the Sahara, and how do the average temperatures there compare to the ones in the Registan Desert?",
+        "paraphrase": "What is the Sahara, and how do the average temperatures there compare to the ones in the Patagonian Desert?",
+        "metrics": {
+            "rouge-1": 0.937499995,
+            "rouge-2": 0.888888883888889,
+            "rouge-l": 0.937499995,
+            "bleu": 0.8979542144404234,
+            "free_score": 0.949999988079071,
+            "base_score": 0.95
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What books should I read as an aspiring entrepreneur?",
+        "target": "What are the top books an aspiring teen entrepreneur should read?",
+        "paraphrase": "What books should I read as an aspiring entrepreneur?",
+        "metrics": {
+            "rouge-1": 0.4999999950500001,
+            "rouge-2": 0.11111110617283973,
+            "rouge-l": 0.39999999505,
+            "bleu": 0.05106074763790193,
+            "free_score": 0.949999988079071,
+            "base_score": 0.95
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        "dataset": "QQP"
+    },
+    {
+        "source": "The updated 64-bit operating system , Windows XP 64-Bit Edition for 64-Bit Extended Systems , will run natively on AMD Athlon 64 processor-powered desktops and AMD Opteron processor-powered workstations .",
+        "target": "Windows XP 64-bit Edition for 64-Bit Extended Systems will support AMD64 technology, running natively on AMD Athlon 64 powered desktops and AMD Opteron processor-powered workstations.",
+        "paraphrase": "The new Windows 8.1 also features support for Microsoft's popular 64-bit mobile operating system, and will run on servers and desktops.    . . .  .  The new software, which can run",
+        "metrics": {
+            "rouge-1": 0.32653060724698046,
+            "rouge-2": 0.0,
+            "rouge-l": 0.20408162765514384,
+            "bleu": 0.009812163258584559,
+            "free_score": 0.6082033514976501,
+            "base_score": 0.6214549708366394
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Assani said Tuesday he did not know what to charge the men with because US officials refused to share information with him .",
+        "target": "Prosecutors said they did not know what crimes to charge the men with because U.S. officials refused to share information with them.",
+        "paraphrase": "Arapali said he did not know what the charges would be but added that U.S. officials refused to share information because the men are \"rapids.\"",
+        "metrics": {
+            "rouge-1": 0.6382978673970123,
+            "rouge-2": 0.4166666617013889,
+            "rouge-l": 0.5957446759076506,
+            "bleu": 0.3159148237572417,
+            "free_score": 0.7153716683387756,
+            "base_score": 0.7468862700462341
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "While a month 's supply of aspirin can cost less than $ 10 , the equivalent amount of ticlopidine can run significantly more than $ 100 .",
+        "target": "While a month's supply of aspirin can cost under $10, the equivalent amount of ticlopidine can run well over $100.",
+        "paraphrase": "The average cost of a typical 12-month Lupin prescription, though, is $100,000, and the equivalent of $250,000 can run into the thousands -- and even $500,000 -- in some cases.",
+        "metrics": {
+            "rouge-1": 0.3181818133471075,
+            "rouge-2": 0.0833333285503475,
+            "rouge-l": 0.2727272678925621,
+            "bleu": 0.022208525930834045,
+            "free_score": 0.6273202300071716,
+            "base_score": 0.6651438641548156
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "He is one of two Democrats on the five-member FCC , and he is a strong advocate of harsher penalties against radio and television stations that violate indecency laws .",
+        "target": "Copps, one of two Democrats on the five-member commission, has pushed for harsher penalties against radio and television stations that violate indecency laws.",
+        "paraphrase": "A two-time Democratic presidential candidate and a member of Congress are among the five who are seeking hefty fines against the Federal Communications Commission for failing to pass tougher radio and television laws in the wake of the Sept. 11 attacks.",
+        "metrics": {
+            "rouge-1": 0.27586206417954817,
+            "rouge-2": 0.0645161244536944,
+            "rouge-l": 0.24137930555885861,
+            "bleu": 0.027549200259075004,
+            "free_score": 0.6139891147613525,
+            "base_score": 0.6466847825050354
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "The lawsuit , filed after a 19-month investigation by the Employee Benefits Security Administration , names Lay and Skilling among others .",
+        "target": "The lawsuit, filed after a 19-month investigation by the Employee Benefits Security Administration, names former Enron Chairman Kenneth Lay and former chief executive Jeff Skilling, among others.",
+        "paraphrase": "The Bush Family's \"Jumbo-bones\" saved millions of dollars in Texas when they brought in a flood in the 1930s and plastered Texas with a \"sling-wall\" in the '40s.",
+        "metrics": {
+            "rouge-1": 0.16666666170138905,
+            "rouge-2": 0.0,
+            "rouge-l": 0.16666666170138905,
+            "bleu": 0.009498525867740094,
+            "free_score": 0.43488195538520813,
+            "base_score": 0.4720721411705017
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Those reports were denied by the interior minister , Prince Nayef .",
+        "target": "However, the Saudi interior minister, Prince Nayef, denied the reports.",
+        "paraphrase": "Those who survived the bombing are among the 1,000 who won't be remembered for their \"silent Sings.\" . . . and whose only triumphs were in the \"Dances.\"",
+        "metrics": {
+            "rouge-1": 0.06060605663911872,
+            "rouge-2": 0.0,
+            "rouge-l": 0.06060605663911872,
+            "bleu": 0.007987276352377327,
+            "free_score": 0.43230512738227844,
+            "base_score": 0.4693598318099976
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Miss Novikova said while there is no standard weight for ballerinas , Miss Volochkova is 'bigger than others ' .",
+        "target": "Commenting on the firing today, Ms. Novikova said that there was no standard weight for ballerinas but that Ms. Volochkova \"is bigger than others.\"",
+        "paraphrase": "A few years ago I wrote a book about how to write a successful first aid manual in Java. It's called \"Jaws of Life.\" Millions of miles later, it's still used in movies.    . .",
+        "metrics": {
+            "rouge-1": 0.036363631497521316,
+            "rouge-2": 0.0,
+            "rouge-l": 0.036363631497521316,
+            "bleu": 0,
+            "free_score": 0.44441676139831543,
+            "base_score": 0.4314932096004486
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "The picture changes a bit should Sen. Hillary Rodham Clinton be the Democratic presidential candidate .",
+        "target": "The picture changes slightly should New York Sen. Hillary Rodham Clinton end up as the Democratic presidential candidate.",
+        "paraphrase": "The picture also suggests that Democratic presidential candidate Hillary Clinton should be treated as a \"presidential candidate\" rather than a \"defender.\"",
+        "metrics": {
+            "rouge-1": 0.4615384565680473,
+            "rouge-2": 0.1578947318975071,
+            "rouge-l": 0.3076923027218935,
+            "bleu": 0.03248711505764769,
+            "free_score": 0.6114310026168823,
+            "base_score": 0.6599526572227478
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Goldman Sachs said : `` We believe this is the right decision for the company , for its employees and for its creditors . ''",
+        "target": "\"We believe this is the right decision for the company (Jinro), for its employees and for its creditors,\" it said.",
+        "paraphrase": "The New York Times quoted Goldman as saying: \"We believe this is the right strategy for the company - for its employees and for its creditors - because it will give them a boost.\"",
+        "metrics": {
+            "rouge-1": 0.5217391258979208,
+            "rouge-2": 0.43137254445213385,
+            "rouge-l": 0.5217391258979208,
+            "bleu": 0.31066878208732795,
+            "free_score": 0.7280145287513733,
+            "base_score": 0.7678168582916259
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Trevor Fetter , who returned to Tenet as president last November , has been appointed as acting CEO , the company said .",
+        "target": "The board has appointed Trevor Fetter, who returned to the company as president last November, as acting CEO.",
+        "paraphrase": "Trevor Fetter, who returned as president and CEO of Tencent in November, has been appointed chief executive.",
+        "metrics": {
+            "rouge-1": 0.5882352891176471,
+            "rouge-2": 0.2424242374288339,
+            "rouge-l": 0.41176470088235295,
+            "bleu": 0.17765987008252418,
+            "free_score": 0.8113856911659241,
+            "base_score": 0.8008666801452636
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "ETPC"
+    },
+    {
+        "source": "Is there a reason why we should travel alone?",
+        "target": "What are some reasons to travel alone?",
+        "paraphrase": "Is there a reason why we shouldn't travel alone?",
+        "metrics": {
+            "rouge-1": 0.24999999507812506,
+            "rouge-2": 0.14285713795918387,
+            "rouge-l": 0.24999999507812506,
+            "bleu": 0.050712153369465586,
+            "free_score": 0.9214885830879211,
+            "base_score": 0.9244820816176278
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "QQP"
+    },
+    {
+        "source": "I am 25 year old guy and never had a girlfriend. Is this weird?",
+        "target": "I am 25 years old. I have never had a girlfriend. Is something wrong with me?",
+        "paraphrase": "I am 25 and never had a girlfriend. Is this weird?",
+        "metrics": {
+            "rouge-1": 0.6153846105029586,
+            "rouge-2": 0.4799999952000001,
+            "rouge-l": 0.6153846105029586,
+            "bleu": 0.29784816444748635,
+            "free_score": 0.961380660533905,
+            "base_score": 0.9324524950008003
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "QQP"
+    },
+    {
+        "source": "\"What does a good answer on Quora look like? What does it mean to \"\"be helpful\"\"?\"",
+        "target": "How do you write a good answer on Quora?",
+        "paraphrase": "\"What does a good answer on Quora look like? Help me understand \"how to be helpful.\" \"It's a question on the Quills.\" What does \"help\" mean?",
+        "metrics": {
+            "rouge-1": 0.24242423845730032,
+            "rouge-2": 0.1714285679020409,
+            "rouge-l": 0.24242423845730032,
+            "bleu": 0.09043565779655338,
+            "free_score": 0.7434873580932617,
+            "base_score": 0.8003971743583679
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What are the best things to do in Hong Kong?",
+        "target": "What is the best thing in Hong Kong?",
+        "paraphrase": "What are the best things to do in Hong Kong?",
+        "metrics": {
+            "rouge-1": 0.6666666617283951,
+            "rouge-2": 0.37499999507812504,
+            "rouge-l": 0.6666666617283951,
+            "bleu": 0.13747081017605653,
+            "free_score": 0.9499999284744263,
+            "base_score": 0.9499999403953552
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "QQP"
+    },
+    {
+        "source": "Which is the best gaming laptop under 40k?",
+        "target": "Which is the best gaming laptop under 40,000 rs?",
+        "paraphrase": "The best laptops for gamers? Dell's XPS 13 and LG's G700 are both $400.",
+        "metrics": {
+            "rouge-1": 0.0869565169754256,
+            "rouge-2": 0.0,
+            "rouge-l": 0.0869565169754256,
+            "bleu": 0.01428363257865929,
+            "free_score": 0.6643667221069336,
+            "base_score": 0.7108816075325012
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What was the deadliest battle in history?",
+        "target": "What was the bloodiest battle in history?",
+        "paraphrase": "What was the deadliest day in American history?",
+        "metrics": {
+            "rouge-1": 0.6666666616888889,
+            "rouge-2": 0.3076923027218935,
+            "rouge-l": 0.6666666616888889,
+            "bleu": 0.1561969968460128,
+            "free_score": 0.8494267463684082,
+            "base_score": 0.8670518205158616
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What are your views about demonetisation in India?",
+        "target": "What do you think about the ban on 500 and 1000 denomination notes in India?",
+        "paraphrase": "What are your views on the Modi government's decision to ban high-value currency?",
+        "metrics": {
+            "rouge-1": 0.285714280739796,
+            "rouge-2": 0.0,
+            "rouge-l": 0.21428570931122462,
+            "bleu": 0.018839576731405495,
+            "free_score": 0.7877662777900696,
+            "base_score": 0.8314289021492004
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "QQP"
+    },
+    {
+        "source": "Is it a bad time to buy a condo or a house in the Bay Area in 2017?",
+        "target": "Would 2017 be a good time to buy a house in Bay Area?",
+        "paraphrase": "Is it a bad time to buy a home in the San Francisco Bay Area?",
+        "metrics": {
+            "rouge-1": 0.5384615334911242,
+            "rouge-2": 0.3076923027218935,
+            "rouge-l": 0.5384615334911242,
+            "bleu": 0.2102369368326755,
+            "free_score": 0.9569604992866516,
+            "base_score": 0.927702145576477
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What is the Sahara, and how do the average temperatures there compare to the ones in the Patagonian Desert?",
+        "target": "What is the Sahara, and how do the average temperatures there compare to the ones in the Registan Desert?",
+        "paraphrase": "What is the average temperature in the Sahara? How do the millions of people living there compare with the millions in the US?",
+        "metrics": {
+            "rouge-1": 0.4848484798530762,
+            "rouge-2": 0.31578946869806096,
+            "rouge-l": 0.42424241924701567,
+            "bleu": 0.07465106915345239,
+            "free_score": 0.8098928928375244,
+            "base_score": 0.8153072166442871
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "QQP"
+    },
+    {
+        "source": "What books should I read as an aspiring entrepreneur?",
+        "target": "What are the top books an aspiring teen entrepreneur should read?",
+        "paraphrase": "What books should I read when I'm starting out?",
+        "metrics": {
+            "rouge-1": 0.2999999950500001,
+            "rouge-2": 0.0,
+            "rouge-l": 0.2999999950500001,
+            "bleu": 0.025271148634948993,
+            "free_score": 0.8852946162223816,
+            "base_score": 0.8884942698478698
+        },
+        "model": "facebook/bart-large",
+        "adapter": "out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        "dataset": "QQP"
+    }
+]
