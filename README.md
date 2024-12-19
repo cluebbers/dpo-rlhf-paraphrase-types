@@ -1,18 +1,26 @@
 # Enhancing Paraphrase Type Generation: The Impact of DPO and RLHF Evaluated with Human-Ranked Data
 
-Repository for master thesis "Enhancing Paraphrase Type Generation: The Impact of DPO and RHLF Evaluated with Human-Ranked Data"
+Repository for master thesis "Enhancing Paraphrase Type Generation: The Impact of DPO and RLHF Evaluated with Human-Ranked Data"
 Student: Christopher L. Luebbers
-Supervisor: Dominik Meier, Terry Ruas
+Supervisors: Dominik Meier, Dr. Terry Lima Ruas
+
+Paraphrasing adds variety to language by rephrasing ideas without altering their meaning.
+Paraphrases enhance text comprehension, information retrieval, and natural language applications by improving communication clarity.
+Paraphrase types provide insights into linguistic variation, facilitating fine-grained semantic analysis and robust language modeling.
+These insights enhance tasks like text simplification, translation and question answering, extending the utility of paraphrase generation.
+Current paraphrase-type generation systems fail to align with human preferences due to a lack of human-ranked datasets and reliance on automated metrics like BLEU and ROUGE.
+We use a human-ranked paraphrase-type dataset and apply Direct Preference Optimization (DPO) to guide type-specific paraphrase generation and detection.
+This work is the first to apply DPO training for paraphrase-type generation.
 
 ## Requirements
 
 To install requirements:
 
 ```setup
-conda create --name dpo_env2 \
+conda create --name dpo_env \
     python=3.11 \
     pytorch torchvision torchaudio pytorch-cuda=12.1 -c pytorch -c nvidia
-conda activate dpo_env2
+conda activate dpo_env
 pip3 install -r requirements.txt
 ```
 
@@ -24,16 +32,6 @@ Datasets:
 - [ETPC Dataset](https://huggingface.co/datasets/jpwahle/etpc)
 - [APTY-ranked Dataset](https://huggingface.co/datasets/worta/apty)
 - base sentences for evaluation can be found at [generate_apt_paraphrases/Sentences](https://github.com/worta/generate_apt_paraphrases)
-
-The training and evaluation scripts are organized into two primary tasks:
-
-- Paraphrase Type Generation (PTG)
-
-  - Models: Llama-3.1-8B, BART-large
-
-- Paraphrase Type Detection (PTD):
-
-  - Model: DeBERTa-base
 
 ## Paraphrase Type Generation (PTG) Training
 
@@ -207,7 +205,7 @@ notebooks/plots.ipynb
 - Enhancing User-Aligned Quality: Human annotators preferred DPO-generated paraphrases over baseline outputs in 16~\% more cases (section~\ref{sec:human_preferences}).
 - Uncovering Metric Limitations and Guiding Future Evaluation: Comparisons between automatic metrics and human rankings show weak correlations (Spearman’s $r < 0.3$), exposing the shortcomings of standard evaluation methods.
 - Advancing Fine-Grained Paraphrase Type Detection: We introduce a paraphrase type detection model achieving F1 scores of 0.91 on addition/deletion and 0.77 on same polarity substitution, enabling more granular assessments.
-- Broadening Impact to Complex Reasoning Tasks: Incorporating human-ranked data also boosts performance on multistep soft reasoning (MuSR) tasks by 38~\%, demonstrating that human-guided optimization extends beyond paraphrase quality.
+- Broadening Impact to Complex Reasoning Tasks: Incorporating human-ranked data also boosts performance on multistep soft reasoning (MuSR) tasks by 38~\% ([MuSR results](results/MuSR_results.html)), demonstrating that human-guided optimization extends beyond paraphrase quality ([OpenLLM Leaderboardv2 Results](results/OpenLLMv2_results.html))
 
 ## Citation
 
