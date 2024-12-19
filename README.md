@@ -82,6 +82,7 @@ python3 src/ppo.py
 ### DPO optimization of SFT/ETPC on APTY-ranked dataset (DPO/APTY)
 
 - Llama-3.1-8B
+  - a table with conducted hyperparameter trials can be found [here](results/hyperparameters_dpo.csv)
 
 ```python
 python3 src/dpo_llama_ptg.py \
@@ -102,6 +103,7 @@ python3 src/dpo_ptg.py \
 ### IPO optimization of SFT/ETPC on APTY-ranked dataset (IPO/APTY)
 
 - Llama-3.1-8B
+  - a table with conducted hyperparameter trials can be found [here](results/hyperparameters_ipo.csv)
 
 ```python
 python3 src/dpo_llama_ptg.py \
