@@ -414,19 +414,19 @@ def parse_args():
     parser.add_argument(
         "--etpc_dir",
         type=str,
-        default="out/gen-models/facebook/bart-large_paraphrase-type-generation",
+        default="cluebbers/bart-large-paraphrase-type-generation-etpc",
         help="ETPC adapter directory.",
     )
     parser.add_argument(
         "--dpo_dir",
         type=str,
-        default="out/gen-models/facebook/bart-large_paraphrase-type-generation_sigmoid",
+        default="cluebbers/bart-large-paraphrase-type-generation-apty-sigmoid",
         help="DPO adapter directory.",
     )
     parser.add_argument(
         "--ipo_dir",
         type=str,
-        default="out/gen-models/facebook/bart-large_paraphrase-type-generation_ipo",
+        default="cluebbers/bart-large-paraphrase-type-generation-apty-ipo",
         help="IPO adapter directory.",
     )
     return parser.parse_args()
