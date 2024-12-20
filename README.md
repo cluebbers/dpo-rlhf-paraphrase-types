@@ -178,7 +178,7 @@ python3 src/eval_dpo_ptg.py \
 - Further evaluation is done in the jupyter notebook. All plots and tables from the project are generated there.
 
 ```python
-notebooks/plots.ipynb
+evaluation.ipynb
 ```
 
 ## Pre-trained models
