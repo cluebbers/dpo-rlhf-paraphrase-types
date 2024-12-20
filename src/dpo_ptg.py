@@ -6,7 +6,7 @@ from datasets import load_dataset
 from transformers import AutoTokenizer, BartForConditionalGeneration
 from trl import DPOConfig, DPOTrainer
 
-from common import load_and_preprocess_apty_dataset
+from common import preprocess_apty_ranked_dataset
 
 
 def parse_args():
@@ -22,7 +22,11 @@ def parse_args():
         print(args.model_name)
         ```"""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_name", type=str, default="facebook/bart-large")
+    parser.add_argument(
+        "--model_name",
+        type=str,
+        default="cluebbers/bart-large-paraphrase-type-generation-etpc",
+    )
     parser.add_argument(
         "--task_name",
         type=str,
@@ -44,37 +48,18 @@ def main():
         device = "cuda"
         torch.cuda.empty_cache()  # Clear GPU cache before starting
 
-    fine_tuned_model_dir = f"./out/gen-models/{args.model_name}_{args.task_name}"  # Path to the fine-tuned model
-
-    # Find the latest checkpoint from the fine-tuned model directory
-    checkpoint_dir = None
-    if os.path.exists(fine_tuned_model_dir) and os.listdir(fine_tuned_model_dir):
-        checkpoint_dirs = [
-            f for f in os.listdir(fine_tuned_model_dir) if f.startswith("checkpoint")
-        ]
-        if checkpoint_dirs:
-            checkpoint_dir = os.path.join(
-                fine_tuned_model_dir,
-                max(
-                    checkpoint_dirs,
-                    key=lambda x: os.path.getctime(
-                        os.path.join(fine_tuned_model_dir, x)
-                    ),
-                ),
-            )
-            print(f"Loading from fine-tuned checkpoint: {checkpoint_dir}")
-        else:
-            print("No checkpoint found in fine-tuned model directory.")
-            return
-
     # Load model and tokenizer
     tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large")
-    model = BartForConditionalGeneration.from_pretrained(checkpoint_dir)
+    model = BartForConditionalGeneration.from_pretrained(args.model_name)
     model = model.to(device)  # Move model to GPU
 
     # Load training and evaluation datasets
     dataset = load_dataset("worta/apty", "APTY-ranked")
-    train_dataset, eval_dataset = load_and_preprocess_apty_dataset(dataset)
+    datasets = preprocess_apty_ranked_dataset(dataset["train"])
+
+    train_dataset = datasets["train"]
+    eval_dataset = datasets["eval"]
+
 
     # Set up training arguments
     training_args = DPOConfig(
