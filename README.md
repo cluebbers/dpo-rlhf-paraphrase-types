@@ -164,7 +164,7 @@ python3 src/eval_llama_ptg.py \
 ```
 
 - BART-large
-Same as above, but includeing ParaScore evaluation
+  Same as above, but includeing ParaScore evaluation
 
 ```python
 python3 src/eval_dpo_ptg.py \
@@ -206,12 +206,18 @@ evaluation.ipynb
 | Llama-2-7B   | [Llama-2-7B generated paraphrases](results/generated_paraphrases_Llama-2-7b-hf_2024-09-03.json)  | [project 5](results/project-5-at-2024-10-21-12-25-522ea966.json) |
 | bart-large   | [bart-large generated paraphrases](results/generated_paraphrases_bart-large.json)                | None                                                             |
 
-- Directly Leveraging Human-Ranked Data for Improved Paraphrase Types: By training models with DPO on the APTY dataset, we achieve a 3~\% higher human annotation accuracy on specific paraphrase types than a supervised fine-tuned model.
-- Enhancing User-Aligned Quality: Human annotators preferred DPO-generated paraphrases over baseline outputs in 16~\% more cases (section~\ref{sec:human_preferences}).
-- Creation of a Human-Ranked Dataset: Annotating generated paraphrases produces a new ranked dataset that supports future evaluations of paraphrase quality and accuracy.
-- Uncovering Metric Limitations and Guiding Future Evaluation: Comparisons between automatic metrics and human rankings show weak correlations (Spearman’s $r < 0.3$), exposing the shortcomings of standard evaluation methods.
-- Advancing Fine-Grained Paraphrase Type Detection: We introduce a paraphrase type detection model achieving F1 scores of 0.91 on addition/deletion and 0.77 on same polarity substitution, enabling more granular assessments.
-- Broadening Impact to Complex Reasoning Tasks: Incorporating human-ranked data also boosts performance on multistep soft reasoning (MuSR) tasks by 38~\% ([MuSR results](results/MuSR_results.html)), demonstrating that human-guided optimization extends beyond paraphrase quality ([OpenLLM Leaderboardv2 Results](results/OpenLLMv2_results.html))
+- Enhanced paraphrase-type generation accuracy:
+  DPO training on APTY increases human-annotated accuracy by 3~\% over a supervised baseline, aligning outputs with nuanced linguistic transformations.
+- Improved user-aligned quality:
+  Human evaluators favor these improved outputs 7~\% more than baseline paraphrases, underscoring enhanced semantic fidelity and stylistic appropriateness.
+  -A new human-ranked dataset:
+  The dataset we produce enables a more rigorous, fine-grained evaluation of paraphrase quality and paves the way for future research.
+- Exposing metric limitations:
+  Weak correlations (Spearman's $r<0.3$) between automated metrics and human rankings motivate the development of richer evaluation frameworks.
+- Improved paraphrase-type detection:
+  Our PTD model achieves F1 scores of 0.91 on addition/deletion, 0.78 on same polarity substitution, and 0.70 for punctuation changes, enabling more granular assessments.
+- Improved reasoning:
+  PTG boosts multistep soft reasoning (MuSR) task performance by 38~\%, demonstrating broader benefits for language generation and reasoning tasks.
 
 ## Citation
 
