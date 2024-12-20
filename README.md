@@ -208,6 +208,7 @@ evaluation.ipynb
 
 - Directly Leveraging Human-Ranked Data for Improved Paraphrase Types: By training models with DPO on the APTY dataset, we achieve a 3~\% higher human annotation accuracy on specific paraphrase types than a supervised fine-tuned model.
 - Enhancing User-Aligned Quality: Human annotators preferred DPO-generated paraphrases over baseline outputs in 16~\% more cases (section~\ref{sec:human_preferences}).
+- Creation of a Human-Ranked Dataset: Annotating generated paraphrases produces a new ranked dataset that supports future evaluations of paraphrase quality and accuracy.
 - Uncovering Metric Limitations and Guiding Future Evaluation: Comparisons between automatic metrics and human rankings show weak correlations (Spearman’s $r < 0.3$), exposing the shortcomings of standard evaluation methods.
 - Advancing Fine-Grained Paraphrase Type Detection: We introduce a paraphrase type detection model achieving F1 scores of 0.91 on addition/deletion and 0.77 on same polarity substitution, enabling more granular assessments.
 - Broadening Impact to Complex Reasoning Tasks: Incorporating human-ranked data also boosts performance on multistep soft reasoning (MuSR) tasks by 38~\% ([MuSR results](results/MuSR_results.html)), demonstrating that human-guided optimization extends beyond paraphrase quality ([OpenLLM Leaderboardv2 Results](results/OpenLLMv2_results.html))
