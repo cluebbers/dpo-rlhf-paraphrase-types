@@ -31,7 +31,11 @@ Datasets:
 
 - [ETPC Dataset](https://huggingface.co/datasets/jpwahle/etpc)
 - [APTY-ranked Dataset](https://huggingface.co/datasets/worta/apty)
-- base sentences for evaluation can be found at [generate_apt_paraphrases/Sentences](https://github.com/worta/generate_apt_paraphrases)
+- base sentences for evaluation can be found at [generate_apt_paraphrases/Sentences](https://github.com/worta/generate_apt_paraphrases). Copy files into ./out/basesentences
+
+Output:
+Output directory is currently hardcoded to ./out
+You probably want to adapt this or even better, add it to script arguments.
 
 ## Paraphrase Type Generation (PTG) Training
 
@@ -57,9 +61,9 @@ Datasets:
   - We used code adapted from [Wahle et al.](https://github.com/jpwahle/emnlp23-paraphrase-types)
 
 ```python
-python3 src/ptg.py \
-  model_name=facebook/bart-large \
-  task_name=paraphrase-type-generation
+python3 src/sft_ptg.py \
+--model_name=facebook/bart-large \
+--task_name=paraphrase-type-generation
 ```
 
 ### Reward modeling on APTY-ranked dataset (Reward/APTY)
@@ -93,9 +97,9 @@ python3 src/dpo_llama_ptg.py \
 
 ```python
 python3 src/dpo_ptg.py \
-  model_name=cluebbers/bart-large-paraphrase-type-generation-etpc
-  task_name=paraphrase-type-generation \
-  loss_type=sigmoid
+--model_name=cluebbers/bart-large-paraphrase-type-generation-etpc \
+--task_name=paraphrase-type-generation \
+--loss_type=sigmoid
 ```
 
 ### IPO optimization of SFT/ETPC on APTY-ranked dataset (IPO/APTY)
@@ -114,9 +118,9 @@ python3 src/dpo_llama_ptg.py \
 
 ```python
 python3 src/dpo_ptg.py \
-  model_name=cluebbers/bart-large-paraphrase-type-generation-etpc
-  task_name=paraphrase-type-generation \
-  loss_type=ipo
+--model_name=cluebbers/bart-large-paraphrase-type-generation-etpc
+--task_name=paraphrase-type-generation \
+--loss_type=ipo
 ```
 
 ## Paraphrase Type Detection (PTD) Training
@@ -127,14 +131,14 @@ python3 src/dpo_ptg.py \
 
 ```python
 python3 src/sft_pd.py \
-  model_name=microsoft/deberta-base
+--model_name=microsoft/deberta-base
 ```
 
 - Multilabel Classification on ETPC dataset
 
 ```python
 python3 src/sft_ptd.py \
-  model_name=cluebbers/deberta-base-paraphrase-detection-qqp
+--model_name=cluebbers/deberta-base-paraphrase-detection-qqp
 ```
 
 After training, a csv file with the evaluation results is created (for thesis: [hyperparameter results](results/deberta-base_qqp_pd_ptd_results_hyperclass_20241024_161522.csv)).
@@ -160,13 +164,14 @@ python3 src/eval_llama_ptg.py \
 ```
 
 - BART-large
+Same as above, but includeing ParaScore evaluation
 
 ```python
 python3 src/eval_dpo_ptg.py \
-  model_name=facebook/bart-large \
-  etpc_dir=cluebbers/bart-large-paraphrase-type-generation-etpc \
-  dpo_dir=cluebbers/bart-large-paraphrase-type-generation-apty-sigmoid \
-  ipo_dir=cluebbers/bart-large-paraphrase-type-generation-apty-ipo
+--model_name=facebook/bart-large \
+--etpc_dir=cluebbers/bart-large-paraphrase-type-generation-etpc \
+--dpo_dir=cluebbers/bart-large-paraphrase-type-generation-apty-sigmoid \
+--ipo_dir=cluebbers/bart-large-paraphrase-type-generation-apty-ipo
 ```
 
 - For Open LLM Leaderboard evaluation, [submit your model](https://huggingface.co/spaces/open-llm-leaderboard/open_llm_leaderboard#/).
