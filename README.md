@@ -221,6 +221,20 @@ evaluation.ipynb
 
 ## Citation
 
+Cite the paper:
+
+```bibtex
+@misc{lübbers2025enhancingparaphrasetypegeneration,
+      title={Enhancing Paraphrase Type Generation: The Impact of DPO and RLHF Evaluated with Human-Ranked Data}, 
+      author={Christopher Lee Lübbers},
+      year={2025},
+      eprint={2506.02018},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL},
+      url={https://arxiv.org/abs/2506.02018}, 
+}
+
+```
 If you use the APTY dataset, please cite:
 
 ```bib
