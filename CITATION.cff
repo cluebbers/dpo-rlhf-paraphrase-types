@@ -1,0 +1,14 @@
+cff-version: 1.2.0
+message: "Please cite this work using the following metadata."
+title: "Enhancing Paraphrase Type Generation: The Impact of DPO and RLHF Evaluated with Human-Ranked Data"
+authors:
+  - family-names: "Lübbers"
+    given-names: "Christopher Lee"
+    name: "Christopher Lee Lübbers"
+date-released: 2025-06-04
+version: "1.0.0"
+archive: "arXiv"
+url: "https://arxiv.org/abs/2506.02018"
+identifiers:
+  - type: "arXiv"
+    value: "2506.02018"
